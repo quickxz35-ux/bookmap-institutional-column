@@ -1,0 +1,26 @@
+plugins {
+    id 'java'
+}
+
+// Target Java 17 bytecode. Do NOT raise this to match a newer bundled JRE:
+// Bookmap finds the @Layer1Attachable entry point by scanning bytecode with ASM, which can't
+// parse class files newer than the bundled ASM supports — too-new bytecode makes Bookmap report
+// "No entry points found in jar". Java 17 matches the official DemoStrategies and loads everywhere.
+java {
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}
+
+tasks.withType(JavaCompile) {
+    options.encoding = 'UTF-8'
+}
+
+dependencies {
+    // Compile against the installed Bookmap jars (provided at runtime by Bookmap).
+    // No network needed; the API version always matches this installation.
+    compileOnly fileTree(dir: 'C:/Program Files/Bookmap/lib', include: ['*.jar'])
+}
+
+jar {
+    archiveFileName = 'institutional-levels-column.jar'
+}
