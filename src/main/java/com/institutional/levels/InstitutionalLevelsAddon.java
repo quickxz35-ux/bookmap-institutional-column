@@ -214,8 +214,8 @@ public class InstitutionalLevelsAddon implements
 
     public class InstitutionalPainter implements ScreenSpacePainterAdapter {
 
-        private static final int PILL_WIDTH = 112;
-        private static final int PILL_HEIGHT = 18;
+        private static final int PILL_WIDTH = 150;
+        private static final int PILL_HEIGHT = 19;
         private static final int LEFT_MARGIN_X = 4;
 
         private final ScreenSpaceCanvas canvas;
@@ -285,10 +285,10 @@ public class InstitutionalLevelsAddon implements
                     Map<String, Object> m = SimpleJson.asMap(o);
                     if (m != null && m.containsKey("price")) {
                         double p = SimpleJson.asDouble(m.get("price"));
-                        String label = "R" + rIdx + " " + formatPrice(p);
+                        String label = "RES " + rIdx + ": " + formatPrice(p);
                         pills.add(new LevelPill(
                                 label, p,
-                                new Color(42, 10, 14, 235),
+                                new Color(42, 10, 14, 240),
                                 new Color(255, 68, 68),
                                 Color.WHITE
                         ));
@@ -303,10 +303,10 @@ public class InstitutionalLevelsAddon implements
                     Map<String, Object> m = SimpleJson.asMap(o);
                     if (m != null && m.containsKey("price")) {
                         double p = SimpleJson.asDouble(m.get("price"));
-                        String label = "S" + sIdx + " " + formatPrice(p);
+                        String label = "SUP " + sIdx + ": " + formatPrice(p);
                         pills.add(new LevelPill(
                                 label, p,
-                                new Color(10, 42, 20, 235),
+                                new Color(10, 42, 20, 240),
                                 new Color(0, 230, 118),
                                 Color.WHITE
                         ));
@@ -324,10 +324,10 @@ public class InstitutionalLevelsAddon implements
                         if (m != null && m.containsKey("price")) {
                             double p = SimpleJson.asDouble(m.get("price"));
                             double z = SimpleJson.asDouble(m.get("z_score"));
-                            String label = "🏦 " + formatPrice(p) + " (+" + String.format("%.1f", z) + "σ)";
+                            String label = "OUTFLOW: " + formatPrice(p) + " (+" + String.format("%.1f", z) + "s)";
                             pills.add(new LevelPill(
                                     label, p,
-                                    new Color(4, 38, 48, 240),
+                                    new Color(4, 38, 48, 245),
                                     new Color(0, 229, 255),
                                     new Color(224, 247, 250)
                             ));
@@ -341,10 +341,10 @@ public class InstitutionalLevelsAddon implements
                         if (m != null && m.containsKey("price")) {
                             double p = SimpleJson.asDouble(m.get("price"));
                             double z = SimpleJson.asDouble(m.get("z_score"));
-                            String label = "🚨 " + formatPrice(p) + " (+" + String.format("%.1f", z) + "σ)";
+                            String label = "INFLOW: " + formatPrice(p) + " (+" + String.format("%.1f", z) + "s)";
                             pills.add(new LevelPill(
                                     label, p,
-                                    new Color(45, 10, 38, 240),
+                                    new Color(45, 10, 38, 245),
                                     new Color(255, 64, 129),
                                     new Color(252, 228, 236)
                             ));
@@ -381,10 +381,12 @@ public class InstitutionalLevelsAddon implements
                     double pctDiff = Math.abs(a.price - b.price) / Math.max(1e-9, a.price);
                     if (pctDiff <= 0.0025) { // within 0.25%
                         merged[j] = true;
-                        String comboLabel = "🔥 " + a.label.split(" ")[0] + "+" + b.label.split(" ")[0] + " " + formatPrice(a.price);
+                        String tagA = extractTag(a.label);
+                        String tagB = extractTag(b.label);
+                        String comboLabel = "CONF: " + tagA + "+" + tagB + " " + formatPrice((a.price + b.price) / 2.0);
                         superConf = new LevelPill(
                                 comboLabel, (a.price + b.price) / 2.0,
-                                new Color(52, 28, 4, 245),
+                                new Color(55, 28, 4, 250),
                                 new Color(255, 179, 0),
                                 new Color(255, 241, 118)
                         );
@@ -399,6 +401,16 @@ public class InstitutionalLevelsAddon implements
                 }
             }
             return result;
+        }
+
+        private String extractTag(String label) {
+            if (label == null) return "";
+            if (label.startsWith("RES ")) return "R" + label.substring(4, label.indexOf(':'));
+            if (label.startsWith("SUP ")) return "S" + label.substring(4, label.indexOf(':'));
+            if (label.startsWith("OUTFLOW")) return "OUT";
+            if (label.startsWith("INFLOW")) return "IN";
+            int colonIdx = label.indexOf(':');
+            return colonIdx >= 0 ? label.substring(0, colonIdx) : label.split(" ")[0];
         }
 
         private double jsonPips = 0.0;
@@ -477,8 +489,9 @@ public class InstitutionalLevelsAddon implements
             g.setColor(pill.textColor);
             g.setFont(new Font("Consolas", Font.BOLD, 10));
 
-            // Vertically centered text
-            int textY = (h / 2) + 4;
+            // Mathematically centered text
+            java.awt.FontMetrics fm = g.getFontMetrics();
+            int textY = ((h - fm.getHeight()) / 2) + fm.getAscent();
             g.drawString(pill.label, 6, textY);
 
             g.dispose();
