@@ -198,13 +198,19 @@ public class InstitutionalLevelsAddon implements
         public final Color bgColor;
         public final Color borderColor;
         public final Color textColor;
+        public final int priority;
 
-        public LevelPill(String label, double price, Color bgColor, Color borderColor, Color textColor) {
+        public LevelPill(String label, double price, Color bgColor, Color borderColor, Color textColor, int priority) {
             this.label = label;
             this.price = price;
             this.bgColor = bgColor;
             this.borderColor = borderColor;
             this.textColor = textColor;
+            this.priority = priority;
+        }
+
+        public LevelPill(String label, double price, Color bgColor, Color borderColor, Color textColor) {
+            this(label, price, bgColor, borderColor, textColor, 50);
         }
     }
 
@@ -217,6 +223,52 @@ public class InstitutionalLevelsAddon implements
         private static final int PILL_WIDTH = 150;
         private static final int PILL_HEIGHT = 19;
         private static final int LEFT_MARGIN_X = 4;
+        private static final int MAX_VISIBLE_PILLS = 8;
+
+        // Badge Color Schemes & Hierarchy
+        // Super-Confluence: Obsidian Gold background #341C04, Electric Amber border #FFB300, Yellow text #FFF59D
+        private static final Color COLOR_CONF_BG = new Color(0x34, 0x1C, 0x04, 245);
+        private static final Color COLOR_CONF_BORDER = new Color(0xFF, 0xB3, 0x00);
+        private static final Color COLOR_CONF_TEXT = new Color(0xFF, 0xF5, 0x9D);
+
+        // CEX Outflow / Accumulation: Dark Teal #042630, Electric Cyan #00E5FF, White text
+        private static final Color COLOR_CEX_OUT_BG = new Color(0x04, 0x26, 0x30, 245);
+        private static final Color COLOR_CEX_OUT_BORDER = new Color(0x00, 0xE5, 0xFF);
+        private static final Color COLOR_CEX_OUT_TEXT = Color.WHITE;
+
+        // CEX Inflow / Distribution: Deep Plum #2D0A26, Pink/Magenta #FF4081, White text
+        private static final Color COLOR_CEX_IN_BG = new Color(0x2D, 0x0A, 0x26, 245);
+        private static final Color COLOR_CEX_IN_BORDER = new Color(0xFF, 0x40, 0x81);
+        private static final Color COLOR_CEX_IN_TEXT = Color.WHITE;
+
+        // Whale Buy Tape: Deep Forest #0A2A14, Lime #00E676, White text
+        private static final Color COLOR_WHL_BUY_BG = new Color(0x0A, 0x2A, 0x14, 245);
+        private static final Color COLOR_WHL_BUY_BORDER = new Color(0x00, 0xE6, 0x76);
+        private static final Color COLOR_WHL_BUY_TEXT = Color.WHITE;
+
+        // Whale Sell Tape: Deep Crimson #2A0A0E, Red #FF4444, White text
+        private static final Color COLOR_WHL_SELL_BG = new Color(0x2A, 0x0A, 0x0E, 245);
+        private static final Color COLOR_WHL_SELL_BORDER = new Color(0xFF, 0x44, 0x44);
+        private static final Color COLOR_WHL_SELL_TEXT = Color.WHITE;
+
+        // Macro OI: Deep Navy #0D1B2A, Electric Blue #00B4D8, White text
+        private static final Color COLOR_OI_MACRO_BG = new Color(0x0D, 0x1B, 0x2A, 245);
+        private static final Color COLOR_OI_MACRO_BORDER = new Color(0x00, 0xB4, 0xD8);
+        private static final Color COLOR_OI_MACRO_TEXT = Color.WHITE;
+
+        // Scalp OI: Charcoal Slate #1E2229, Orange #FF9E00, Peach text #FFD180
+        private static final Color COLOR_OI_SCALP_BG = new Color(0x1E, 0x22, 0x29, 245);
+        private static final Color COLOR_OI_SCALP_BORDER = new Color(0xFF, 0x9E, 0x00);
+        private static final Color COLOR_OI_SCALP_TEXT = new Color(0xFF, 0xD1, 0x80);
+
+        // Support / Resistance: Standard emerald & crimson
+        private static final Color COLOR_SUP_BG = new Color(0x0A, 0x2A, 0x14, 240);
+        private static final Color COLOR_SUP_BORDER = new Color(0x00, 0xE6, 0x76);
+        private static final Color COLOR_SUP_TEXT = Color.WHITE;
+
+        private static final Color COLOR_RES_BG = new Color(0x2A, 0x0A, 0x0E, 240);
+        private static final Color COLOR_RES_BORDER = new Color(0xFF, 0x44, 0x44);
+        private static final Color COLOR_RES_TEXT = Color.WHITE;
 
         private final ScreenSpaceCanvas canvas;
         private final String alias;
@@ -226,6 +278,7 @@ public class InstitutionalLevelsAddon implements
         private long lastFileModified = 0L;
         private final List<CanvasIcon> activeIcons = Collections.synchronizedList(new ArrayList<>());
         private final List<LevelPill> currentPills = new ArrayList<>();
+        private double jsonPips = 0.0;
 
         public InstitutionalPainter(ScreenSpaceCanvas canvas, String alias) {
             this.canvas = canvas;
@@ -276,84 +329,237 @@ public class InstitutionalLevelsAddon implements
                     jsonPips = SimpleJson.asDouble(root.get("tick_size"));
                 }
 
+                double currentPrice = SimpleJson.asDouble(root.get("current_price"));
+
                 List<LevelPill> pills = new ArrayList<>();
 
-                // Parse resistances (Crimson)
+                // 1. Top Resistances (RES 1, RES 2)
                 List<Object> resList = SimpleJson.asList(root.get("top_resistances"));
                 int rIdx = 1;
                 for (Object o : resList) {
+                    if (rIdx > 2) break; // Enforce top 2
                     Map<String, Object> m = SimpleJson.asMap(o);
-                    if (m != null && m.containsKey("price")) {
-                        double p = SimpleJson.asDouble(m.get("price"));
+                    if (m != null && hasPrice(m)) {
+                        double p = getDoubleField(m, "price", "px");
                         String label = "RES " + rIdx + ": " + formatPrice(p);
                         pills.add(new LevelPill(
                                 label, p,
-                                new Color(42, 10, 14, 240),
-                                new Color(255, 68, 68),
-                                Color.WHITE
+                                COLOR_RES_BG,
+                                COLOR_RES_BORDER,
+                                COLOR_RES_TEXT,
+                                rIdx == 1 ? 95 : 45
                         ));
                         rIdx++;
                     }
                 }
 
-                // Parse supports (Emerald)
+                // 2. Top Supports (SUP 1, SUP 2)
                 List<Object> supList = SimpleJson.asList(root.get("top_supports"));
                 int sIdx = 1;
                 for (Object o : supList) {
+                    if (sIdx > 2) break; // Enforce top 2
                     Map<String, Object> m = SimpleJson.asMap(o);
-                    if (m != null && m.containsKey("price")) {
-                        double p = SimpleJson.asDouble(m.get("price"));
+                    if (m != null && hasPrice(m)) {
+                        double p = getDoubleField(m, "price", "px");
                         String label = "SUP " + sIdx + ": " + formatPrice(p);
                         pills.add(new LevelPill(
                                 label, p,
-                                new Color(10, 42, 20, 240),
-                                new Color(0, 230, 118),
-                                Color.WHITE
+                                COLOR_SUP_BG,
+                                COLOR_SUP_BORDER,
+                                COLOR_SUP_TEXT,
+                                sIdx == 1 ? 95 : 45
                         ));
                         sIdx++;
                     }
                 }
 
-                // Parse whale flows
-                Map<String, Object> wf = SimpleJson.asMap(root.get("whale_flows"));
-                if (wf != null) {
-                    // Outflows Accumulation (Cyan)
-                    List<Object> outflows = SimpleJson.asList(wf.get("outflows_accumulation"));
+                // 3. CEX Flows (cex_inflows, cex_outflows) -> CEX IN: <px> ($<usd>) and CEX OUT: <px> ($<usd>)
+                Map<String, Object> cf = SimpleJson.asMap(root.get("cex_flows"));
+                if (cf == null) {
+                    cf = SimpleJson.asMap(root.get("whale_flows"));
+                }
+                if (cf != null) {
+                    // Outflows / Accumulation
+                    List<Object> outflows = getListField(cf, "cex_outflows", "outflows", "outflows_accumulation");
                     for (Object o : outflows) {
                         Map<String, Object> m = SimpleJson.asMap(o);
-                        if (m != null && m.containsKey("price")) {
-                            double p = SimpleJson.asDouble(m.get("price"));
-                            double z = SimpleJson.asDouble(m.get("z_score"));
-                            String label = "OUTFLOW: " + formatPrice(p) + " (+" + String.format("%.1f", z) + "s)";
+                        if (m != null && hasPrice(m)) {
+                            double p = getDoubleField(m, "price", "px");
+                            double usd = getUsdField(m, p);
+                            String label = "CEX OUT: " + formatPrice(p) + " ($" + formatUsd(usd) + ")";
                             pills.add(new LevelPill(
                                     label, p,
-                                    new Color(4, 38, 48, 245),
-                                    new Color(0, 229, 255),
-                                    new Color(224, 247, 250)
+                                    COLOR_CEX_OUT_BG,
+                                    COLOR_CEX_OUT_BORDER,
+                                    COLOR_CEX_OUT_TEXT,
+                                    80
                             ));
                         }
                     }
 
-                    // Inflows Distribution (Magenta)
-                    List<Object> inflows = SimpleJson.asList(wf.get("inflows_distribution"));
+                    // Inflows / Distribution
+                    List<Object> inflows = getListField(cf, "cex_inflows", "inflows", "inflows_distribution");
                     for (Object o : inflows) {
                         Map<String, Object> m = SimpleJson.asMap(o);
-                        if (m != null && m.containsKey("price")) {
-                            double p = SimpleJson.asDouble(m.get("price"));
-                            double z = SimpleJson.asDouble(m.get("z_score"));
-                            String label = "INFLOW: " + formatPrice(p) + " (+" + String.format("%.1f", z) + "s)";
+                        if (m != null && hasPrice(m)) {
+                            double p = getDoubleField(m, "price", "px");
+                            double usd = getUsdField(m, p);
+                            String label = "CEX IN: " + formatPrice(p) + " ($" + formatUsd(usd) + ")";
                             pills.add(new LevelPill(
                                     label, p,
-                                    new Color(45, 10, 38, 245),
-                                    new Color(255, 64, 129),
-                                    new Color(252, 228, 236)
+                                    COLOR_CEX_IN_BG,
+                                    COLOR_CEX_IN_BORDER,
+                                    COLOR_CEX_IN_TEXT,
+                                    80
                             ));
                         }
                     }
                 }
 
-                // Merge proximate levels into Super-Confluence (Amber)
-                List<LevelPill> consolidated = consolidateLevels(pills);
+                // 4. Whale Trades (whale_buys, whale_sells) -> WHL BUY: <px> ($<usd>) and WHL SELL: <px> ($<usd>)
+                Map<String, Object> wt = SimpleJson.asMap(root.get("whale_trades"));
+                if (wt == null) {
+                    wt = SimpleJson.asMap(root.get("trades"));
+                }
+                if (wt != null) {
+                    // Whale Buys
+                    List<Object> buys = getListField(wt, "whale_buys", "buys");
+                    for (Object o : buys) {
+                        Map<String, Object> m = SimpleJson.asMap(o);
+                        if (m != null && hasPrice(m)) {
+                            double p = getDoubleField(m, "price", "px");
+                            double usd = getUsdField(m, p);
+                            String label = "WHL BUY: " + formatPrice(p) + " ($" + formatUsd(usd) + ")";
+                            pills.add(new LevelPill(
+                                    label, p,
+                                    COLOR_WHL_BUY_BG,
+                                    COLOR_WHL_BUY_BORDER,
+                                    COLOR_WHL_BUY_TEXT,
+                                    70
+                            ));
+                        }
+                    }
+
+                    // Whale Sells
+                    List<Object> sells = getListField(wt, "whale_sells", "sells");
+                    for (Object o : sells) {
+                        Map<String, Object> m = SimpleJson.asMap(o);
+                        if (m != null && hasPrice(m)) {
+                            double p = getDoubleField(m, "price", "px");
+                            double usd = getUsdField(m, p);
+                            String label = "WHL SELL: " + formatPrice(p) + " ($" + formatUsd(usd) + ")";
+                            pills.add(new LevelPill(
+                                    label, p,
+                                    COLOR_WHL_SELL_BG,
+                                    COLOR_WHL_SELL_BORDER,
+                                    COLOR_WHL_SELL_TEXT,
+                                    70
+                            ));
+                        }
+                    }
+                }
+
+                // 5. Macro OI (macro_longs, macro_shorts) -> OI-M: <px> (+<pct>)
+                Map<String, Object> moi = SimpleJson.asMap(root.get("macro_oi"));
+                if (moi != null) {
+                    List<Object> mLongs = getListField(moi, "macro_longs", "longs");
+                    for (Object o : mLongs) {
+                        Map<String, Object> m = SimpleJson.asMap(o);
+                        if (m != null && hasPrice(m)) {
+                            double p = getDoubleField(m, "price", "px");
+                            double pct = getPctField(m);
+                            String label = "OI-M: " + formatPrice(p) + " (" + formatPct(pct) + ")";
+                            pills.add(new LevelPill(
+                                    label, p,
+                                    COLOR_OI_MACRO_BG,
+                                    COLOR_OI_MACRO_BORDER,
+                                    COLOR_OI_MACRO_TEXT,
+                                    60
+                            ));
+                        }
+                    }
+
+                    List<Object> mShorts = getListField(moi, "macro_shorts", "shorts");
+                    for (Object o : mShorts) {
+                        Map<String, Object> m = SimpleJson.asMap(o);
+                        if (m != null && hasPrice(m)) {
+                            double p = getDoubleField(m, "price", "px");
+                            double pct = getPctField(m);
+                            String label = "OI-M: " + formatPrice(p) + " (" + formatPct(pct) + ")";
+                            pills.add(new LevelPill(
+                                    label, p,
+                                    COLOR_OI_MACRO_BG,
+                                    COLOR_OI_MACRO_BORDER,
+                                    COLOR_OI_MACRO_TEXT,
+                                    60
+                            ));
+                        }
+                    }
+                }
+
+                // 6. Scalp OI (scalp_longs, scalp_shorts) -> OI-S: <px> (+<pct>)
+                Map<String, Object> soi = SimpleJson.asMap(root.get("scalp_oi"));
+                if (soi != null) {
+                    List<Object> sLongs = getListField(soi, "scalp_longs", "longs");
+                    for (Object o : sLongs) {
+                        Map<String, Object> m = SimpleJson.asMap(o);
+                        if (m != null && hasPrice(m)) {
+                            double p = getDoubleField(m, "price", "px");
+                            double pct = getPctField(m);
+                            String label = "OI-S: " + formatPrice(p) + " (" + formatPct(pct) + ")";
+                            pills.add(new LevelPill(
+                                    label, p,
+                                    COLOR_OI_SCALP_BG,
+                                    COLOR_OI_SCALP_BORDER,
+                                    COLOR_OI_SCALP_TEXT,
+                                    50
+                            ));
+                        }
+                    }
+
+                    List<Object> sShorts = getListField(soi, "scalp_shorts", "shorts");
+                    for (Object o : sShorts) {
+                        Map<String, Object> m = SimpleJson.asMap(o);
+                        if (m != null && hasPrice(m)) {
+                            double p = getDoubleField(m, "price", "px");
+                            double pct = getPctField(m);
+                            String label = "OI-S: " + formatPrice(p) + " (" + formatPct(pct) + ")";
+                            pills.add(new LevelPill(
+                                    label, p,
+                                    COLOR_OI_SCALP_BG,
+                                    COLOR_OI_SCALP_BORDER,
+                                    COLOR_OI_SCALP_TEXT,
+                                    50
+                            ));
+                        }
+                    }
+                }
+
+                // 7. Direct / Pre-computed Confluences
+                List<Object> confs = getListField(root, "confluences", "super_confluences");
+                for (Object o : confs) {
+                    Map<String, Object> m = SimpleJson.asMap(o);
+                    if (m != null && hasPrice(m)) {
+                        double p = getDoubleField(m, "price", "px");
+                        String tag = SimpleJson.asString(m.get("tag"));
+                        if (tag.isEmpty()) tag = SimpleJson.asString(m.get("label"));
+                        String label = tag.startsWith("CONF:") ? tag : ("CONF: " + (tag.isEmpty() ? "SUPER" : tag) + " " + formatPrice(p));
+                        pills.add(new LevelPill(
+                                label, p,
+                                COLOR_CONF_BG,
+                                COLOR_CONF_BORDER,
+                                COLOR_CONF_TEXT,
+                                100
+                        ));
+                    }
+                }
+
+                if (currentPrice <= 0.0 && !pills.isEmpty()) {
+                    currentPrice = pills.get(0).price;
+                }
+
+                // Consolidate proximate levels (< 0.20% diff) and enforce max 8 visible badges total
+                List<LevelPill> consolidated = consolidateLevels(pills, currentPrice);
 
                 synchronized (this) {
                     currentPills.clear();
@@ -365,55 +571,157 @@ public class InstitutionalLevelsAddon implements
             }
         }
 
-        private List<LevelPill> consolidateLevels(List<LevelPill> input) {
-            List<LevelPill> result = new ArrayList<>();
-            boolean[] merged = new boolean[input.size()];
+        private boolean hasPrice(Map<String, Object> m) {
+            return m != null && (m.containsKey("price") || m.containsKey("px") || m.containsKey("level"));
+        }
 
-            for (int i = 0; i < input.size(); i++) {
-                if (merged[i]) continue;
-                LevelPill a = input.get(i);
+        private double getDoubleField(Map<String, Object> m, String... keys) {
+            if (m == null) return 0.0;
+            for (String k : keys) {
+                if (m.containsKey(k)) {
+                    return SimpleJson.asDouble(m.get(k));
+                }
+            }
+            return 0.0;
+        }
 
-                LevelPill superConf = null;
-                for (int j = i + 1; j < input.size(); j++) {
-                    if (merged[j]) continue;
-                    LevelPill b = input.get(j);
+        private double getUsdField(Map<String, Object> m, double fallbackPx) {
+            if (m == null) return 0.0;
+            double usd = getDoubleField(m, "usd", "volume_usd", "vol_usd", "amount_usd", "vol", "notional");
+            if (usd == 0.0 && m.containsKey("volume") && fallbackPx > 0) {
+                usd = SimpleJson.asDouble(m.get("volume")) * fallbackPx;
+            }
+            return usd;
+        }
 
-                    double pctDiff = Math.abs(a.price - b.price) / Math.max(1e-9, a.price);
-                    if (pctDiff <= 0.0025) { // within 0.25%
-                        merged[j] = true;
-                        String tagA = extractTag(a.label);
-                        String tagB = extractTag(b.label);
-                        String comboLabel = "CONF: " + tagA + "+" + tagB + " " + formatPrice((a.price + b.price) / 2.0);
-                        superConf = new LevelPill(
-                                comboLabel, (a.price + b.price) / 2.0,
-                                new Color(55, 28, 4, 250),
-                                new Color(255, 179, 0),
-                                new Color(255, 241, 118)
-                        );
+        private double getPctField(Map<String, Object> m) {
+            if (m == null) return 0.0;
+            return getDoubleField(m, "pct", "delta_pct", "oi_pct", "change_pct", "oi_delta_pct", "delta_oi_pct", "shift");
+        }
+
+        private List<Object> getListField(Map<String, Object> m, String... keys) {
+            if (m == null) return Collections.emptyList();
+            for (String k : keys) {
+                if (m.containsKey(k)) {
+                    List<Object> list = SimpleJson.asList(m.get(k));
+                    if (list != null && !list.isEmpty()) return list;
+                }
+            }
+            return Collections.emptyList();
+        }
+
+        private List<LevelPill> consolidateLevels(List<LevelPill> input, double currPrice) {
+            if (input == null || input.isEmpty()) return Collections.emptyList();
+
+            // Sort by price ascending
+            List<LevelPill> sorted = new ArrayList<>(input);
+            sorted.sort((a, b) -> Double.compare(a.price, b.price));
+
+            List<LevelPill> mergedList = new ArrayList<>();
+            int n = sorted.size();
+            boolean[] used = new boolean[n];
+
+            for (int i = 0; i < n; i++) {
+                if (used[i]) continue;
+
+                LevelPill base = sorted.get(i);
+                List<LevelPill> cluster = new ArrayList<>();
+                cluster.add(base);
+
+                for (int j = i + 1; j < n; j++) {
+                    if (used[j]) continue;
+                    LevelPill next = sorted.get(j);
+
+                    double clusterAvg = getAveragePrice(cluster);
+                    double pctDiff = Math.abs(next.price - clusterAvg) / Math.max(1e-9, clusterAvg);
+
+                    if (pctDiff <= 0.0020) { // within 0.20%
+                        cluster.add(next);
+                        used[j] = true;
+                    } else {
                         break;
                     }
                 }
 
-                if (superConf != null) {
-                    result.add(superConf);
+                if (cluster.size() > 1) {
+                    double avgPrice = getAveragePrice(cluster);
+                    List<String> tags = new ArrayList<>();
+                    for (LevelPill p : cluster) {
+                        String t = extractTag(p.label);
+                        if (t != null && !t.isEmpty()) {
+                            for (String part : t.split("\\+")) {
+                                part = part.trim();
+                                if (!part.isEmpty() && !tags.contains(part)) {
+                                    tags.add(part);
+                                }
+                            }
+                        }
+                    }
+                    String combinedTags = String.join("+", tags);
+                    String comboLabel = "CONF: " + combinedTags + " " + formatPrice(avgPrice);
+
+                    mergedList.add(new LevelPill(
+                            comboLabel,
+                            avgPrice,
+                            COLOR_CONF_BG,
+                            COLOR_CONF_BORDER,
+                            COLOR_CONF_TEXT,
+                            100
+                    ));
                 } else {
-                    result.add(a);
+                    mergedList.add(base);
                 }
             }
-            return result;
+
+            // Enforce max 8 visible badges total
+            if (mergedList.size() > MAX_VISIBLE_PILLS) {
+                mergedList.sort((a, b) -> {
+                    int cmp = Integer.compare(b.priority, a.priority);
+                    if (cmp != 0) return cmp;
+                    double distA = Math.abs(a.price - currPrice);
+                    double distB = Math.abs(b.price - currPrice);
+                    return Double.compare(distA, distB);
+                });
+                mergedList = new ArrayList<>(mergedList.subList(0, MAX_VISIBLE_PILLS));
+                mergedList.sort((a, b) -> Double.compare(a.price, b.price));
+            }
+
+            return mergedList;
+        }
+
+        private static double getAveragePrice(List<LevelPill> cluster) {
+            double sum = 0.0;
+            for (LevelPill p : cluster) sum += p.price;
+            return sum / cluster.size();
         }
 
         private String extractTag(String label) {
-            if (label == null) return "";
-            if (label.startsWith("RES ")) return "R" + label.substring(4, label.indexOf(':'));
-            if (label.startsWith("SUP ")) return "S" + label.substring(4, label.indexOf(':'));
-            if (label.startsWith("OUTFLOW")) return "OUT";
-            if (label.startsWith("INFLOW")) return "IN";
-            int colonIdx = label.indexOf(':');
-            return colonIdx >= 0 ? label.substring(0, colonIdx) : label.split(" ")[0];
+            if (label == null || label.isEmpty()) return "";
+            if (label.startsWith("CONF: ")) {
+                int spaceIdx = label.lastIndexOf(' ');
+                return spaceIdx > 6 ? label.substring(6, spaceIdx).trim() : label.substring(6).trim();
+            }
+            if (label.startsWith("RES ")) {
+                int colon = label.indexOf(':');
+                return colon > 4 ? "R" + label.substring(4, colon).trim() : "RES";
+            }
+            if (label.startsWith("SUP ")) {
+                int colon = label.indexOf(':');
+                return colon > 4 ? "S" + label.substring(4, colon).trim() : "SUP";
+            }
+            if (label.startsWith("CEX IN:")) return "CEX-IN";
+            if (label.startsWith("CEX OUT:")) return "CEX-OUT";
+            if (label.startsWith("WHL BUY:")) return "W-BUY";
+            if (label.startsWith("WHL SELL:")) return "W-SELL";
+            if (label.startsWith("OI-M:")) return "OI-M";
+            if (label.startsWith("OI-S:")) return "OI-S";
+            if (label.startsWith("OUTFLOW")) return "CEX-OUT";
+            if (label.startsWith("INFLOW")) return "CEX-IN";
+            int colon = label.indexOf(':');
+            if (colon > 0) return label.substring(0, colon).trim();
+            int space = label.indexOf(' ');
+            return space > 0 ? label.substring(0, space).trim() : label;
         }
-
-        private double jsonPips = 0.0;
 
         @Override
         public void onMoveEnd() {
@@ -487,10 +795,23 @@ public class InstitutionalLevelsAddon implements
 
             // Text Label
             g.setColor(pill.textColor);
-            g.setFont(new Font("Consolas", Font.BOLD, 10));
+            Font font = new Font("Consolas", Font.BOLD, 10);
+            g.setFont(font);
+            java.awt.FontMetrics fm = g.getFontMetrics();
+
+            // Auto-adjust font size if text is wide so it fits nicely within 150px
+            if (fm.stringWidth(pill.label) > w - 10) {
+                font = new Font("Consolas", Font.BOLD, 9);
+                g.setFont(font);
+                fm = g.getFontMetrics();
+            }
+            if (fm.stringWidth(pill.label) > w - 8) {
+                font = new Font("Consolas", Font.PLAIN, 9);
+                g.setFont(font);
+                fm = g.getFontMetrics();
+            }
 
             // Mathematically centered text
-            java.awt.FontMetrics fm = g.getFontMetrics();
             int textY = ((h - fm.getHeight()) / 2) + fm.getAscent();
             g.drawString(pill.label, 6, textY);
 
@@ -504,6 +825,34 @@ public class InstitutionalLevelsAddon implements
             if (price >= 0.01) return String.format("%.4f", price);
             if (price >= 0.0001) return String.format("%.6f", price);
             return String.format("%.7f", price);
+        }
+
+        private String formatUsd(double usd) {
+            double abs = Math.abs(usd);
+            if (abs >= 1_000_000_000.0) {
+                return String.format("%.1fB", usd / 1_000_000_000.0);
+            } else if (abs >= 1_000_000.0) {
+                return String.format("%.1fM", usd / 1_000_000.0);
+            } else if (abs >= 1_000.0) {
+                if (abs < 10_000.0) {
+                    return String.format("%.1fK", usd / 1_000.0);
+                }
+                return String.format("%.0fK", usd / 1_000.0);
+            } else if (abs > 0.0) {
+                return String.format("%.0f", usd);
+            }
+            return "0";
+        }
+
+        private String formatPct(double pct) {
+            if (Math.abs(pct) <= 1.0 && pct != 0.0) {
+                pct = pct * 100.0;
+            }
+            if (pct >= 0.0) {
+                return String.format("+%.1f%%", pct);
+            } else {
+                return String.format("%.1f%%", pct);
+            }
         }
 
         @Override
@@ -555,6 +904,10 @@ public class InstitutionalLevelsAddon implements
                 try { return Double.parseDouble((String) obj); } catch (Exception ignored) {}
             }
             return 0.0;
+        }
+
+        public static String asString(Object obj) {
+            return obj != null ? obj.toString().trim() : "";
         }
 
         public static Map<String, Object> parseObject(String json) {

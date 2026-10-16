@@ -4,3 +4,4 @@ build/reports/
 build/tmp/
 *.log
 .DS_Store
+gradle.properties
