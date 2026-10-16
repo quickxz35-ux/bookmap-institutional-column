@@ -177,6 +177,19 @@ public class InstitutionalLevelsAddon implements
         if (painter != null) {
             painter.dispose();
         }
+        removeOpenInstrument(alias);
+    }
+
+    private void removeOpenInstrument(String alias) {
+        try {
+            if (!BOOKMAP_DIR.exists()) return;
+            File f = new File(BOOKMAP_DIR, "open_instruments.txt");
+            if (!f.exists()) return;
+            List<String> lines = Files.readAllLines(f.toPath());
+            if (lines.remove(alias)) {
+                Files.write(f.toPath(), lines);
+            }
+        } catch (Throwable ignored) {}
     }
 
     private void checkAllPaintersForFileUpdates() {
@@ -277,7 +290,7 @@ public class InstitutionalLevelsAddon implements
         private InstrumentInfo instrumentInfo;
         private long lastFileModified = 0L;
         private final List<CanvasIcon> activeIcons = Collections.synchronizedList(new ArrayList<>());
-        private final List<LevelPill> currentPills = new ArrayList<>();
+        private volatile List<LevelPill> currentPills = Collections.emptyList();
         private double jsonPips = 0.0;
 
         public InstitutionalPainter(ScreenSpaceCanvas canvas, String alias) {
@@ -291,7 +304,7 @@ public class InstitutionalLevelsAddon implements
             this.instrumentInfo = info;
         }
 
-        public synchronized void checkAndReload(boolean force) {
+        public void checkAndReload(boolean force) {
             File file = resolveJsonFile(coinSymbol);
             if (file == null || !file.exists()) {
                 return;
@@ -300,8 +313,11 @@ public class InstitutionalLevelsAddon implements
             long modified = file.lastModified();
             if (force || modified > lastFileModified) {
                 lastFileModified = modified;
-                loadJsonData(file);
-                update();
+                List<LevelPill> newPills = loadJsonData(file);
+                if (newPills != null) {
+                    this.currentPills = Collections.unmodifiableList(newPills);
+                    update();
+                }
             }
         }
 
@@ -311,17 +327,40 @@ public class InstitutionalLevelsAddon implements
             File coinFile = new File(BOOKMAP_DIR, "institutional_levels_" + coin + ".json");
             if (coinFile.exists()) return coinFile;
 
+            // Check meme/futures prefix (e.g. 1000PEPE -> PEPE or PEPE -> 1000PEPE)
+            if (coin.startsWith("1000")) {
+                File un1000 = new File(BOOKMAP_DIR, "institutional_levels_" + coin.substring(4) + ".json");
+                if (un1000.exists()) return un1000;
+            } else {
+                File with1000 = new File(BOOKMAP_DIR, "institutional_levels_1000" + coin + ".json");
+                if (with1000.exists()) return with1000;
+            }
+
             File latestFile = new File(BOOKMAP_DIR, "institutional_levels_latest.json");
-            if (latestFile.exists()) return latestFile;
+            if (latestFile.exists() && isFileForCoin(latestFile, coin)) return latestFile;
 
             return null;
         }
 
-        private void loadJsonData(File file) {
+        private static boolean isFileForCoin(File file, String coin) {
             try {
                 String content = new String(Files.readAllBytes(file.toPath()), "UTF-8");
                 Map<String, Object> root = SimpleJson.parseObject(content);
-                if (root == null) return;
+                if (root != null && root.containsKey("coin")) {
+                    String c = cleanSymbol(SimpleJson.asString(root.get("coin")));
+                    String target = cleanSymbol(coin);
+                    if (c.equalsIgnoreCase(target)) return true;
+                    if (c.equals("1000" + target) || target.equals("1000" + c)) return true;
+                }
+            } catch (Throwable ignored) {}
+            return false;
+        }
+
+        private List<LevelPill> loadJsonData(File file) {
+            try {
+                String content = new String(Files.readAllBytes(file.toPath()), "UTF-8");
+                Map<String, Object> root = SimpleJson.parseObject(content);
+                if (root == null) return null;
 
                 if (root.containsKey("pips")) {
                     jsonPips = SimpleJson.asDouble(root.get("pips"));
@@ -347,7 +386,7 @@ public class InstitutionalLevelsAddon implements
                                 COLOR_RES_BG,
                                 COLOR_RES_BORDER,
                                 COLOR_RES_TEXT,
-                                rIdx == 1 ? 95 : 45
+                                rIdx == 1 ? 95 : 75
                         ));
                         rIdx++;
                     }
@@ -367,7 +406,7 @@ public class InstitutionalLevelsAddon implements
                                 COLOR_SUP_BG,
                                 COLOR_SUP_BORDER,
                                 COLOR_SUP_TEXT,
-                                sIdx == 1 ? 95 : 45
+                                sIdx == 1 ? 95 : 75
                         ));
                         sIdx++;
                     }
@@ -541,9 +580,11 @@ public class InstitutionalLevelsAddon implements
                     Map<String, Object> m = SimpleJson.asMap(o);
                     if (m != null && hasPrice(m)) {
                         double p = getDoubleField(m, "price", "px");
-                        String tag = SimpleJson.asString(m.get("tag"));
-                        if (tag.isEmpty()) tag = SimpleJson.asString(m.get("label"));
-                        String label = tag.startsWith("CONF:") ? tag : ("CONF: " + (tag.isEmpty() ? "SUPER" : tag) + " " + formatPrice(p));
+                        String label = SimpleJson.asString(m.get("label"));
+                        if (label.isEmpty()) {
+                            String tag = SimpleJson.asString(m.get("tag"));
+                            label = tag.startsWith("CONF:") ? (tag + " " + formatPrice(p)) : ("CONF: " + (tag.isEmpty() ? "SUPER" : tag) + " " + formatPrice(p));
+                        }
                         pills.add(new LevelPill(
                                 label, p,
                                 COLOR_CONF_BG,
@@ -559,15 +600,11 @@ public class InstitutionalLevelsAddon implements
                 }
 
                 // Consolidate proximate levels (< 0.20% diff) and enforce max 8 visible badges total
-                List<LevelPill> consolidated = consolidateLevels(pills, currentPrice);
-
-                synchronized (this) {
-                    currentPills.clear();
-                    currentPills.addAll(consolidated);
-                }
+                return consolidateLevels(pills, currentPrice);
 
             } catch (Throwable t) {
                 // Ignore parse errors on active write
+                return null;
             }
         }
 
@@ -596,7 +633,7 @@ public class InstitutionalLevelsAddon implements
 
         private double getPctField(Map<String, Object> m) {
             if (m == null) return 0.0;
-            return getDoubleField(m, "pct", "delta_pct", "oi_pct", "change_pct", "oi_delta_pct", "delta_oi_pct", "shift");
+            return getDoubleField(m, "pct", "delta_pct", "pct_increase", "oi_pct", "change_pct", "oi_delta_pct", "delta_oi_pct", "shift");
         }
 
         private List<Object> getListField(Map<String, Object> m, String... keys) {
@@ -632,10 +669,9 @@ public class InstitutionalLevelsAddon implements
                     if (used[j]) continue;
                     LevelPill next = sorted.get(j);
 
-                    double clusterAvg = getAveragePrice(cluster);
-                    double pctDiff = Math.abs(next.price - clusterAvg) / Math.max(1e-9, clusterAvg);
+                    double pctDiff = Math.abs(next.price - base.price) / Math.max(1e-9, base.price);
 
-                    if (pctDiff <= 0.0020) { // within 0.20%
+                    if (pctDiff <= 0.0020) { // within 0.20% of base
                         cluster.add(next);
                         used[j] = true;
                     } else {
@@ -752,6 +788,9 @@ public class InstitutionalLevelsAddon implements
                     }
 
                     double priceInPips = pill.price / pips;
+                    if (Double.isNaN(priceInPips) || Double.isInfinite(priceInPips)) {
+                        continue;
+                    }
 
                     CompositeHorizontalCoordinate x1 = new CompositeHorizontalCoordinate(CompositeCoordinateBase.PIXEL_ZERO, LEFT_MARGIN_X, 0);
                     CompositeHorizontalCoordinate x2 = new CompositeHorizontalCoordinate(CompositeCoordinateBase.PIXEL_ZERO, LEFT_MARGIN_X + PILL_WIDTH, 0);
@@ -794,26 +833,39 @@ public class InstitutionalLevelsAddon implements
             g.drawRoundRect(0, 0, w - 1, h - 1, 6, 6);
 
             // Text Label
+            String label = pill.label;
             g.setColor(pill.textColor);
             Font font = new Font("Consolas", Font.BOLD, 10);
             g.setFont(font);
             java.awt.FontMetrics fm = g.getFontMetrics();
 
             // Auto-adjust font size if text is wide so it fits nicely within 150px
-            if (fm.stringWidth(pill.label) > w - 10) {
+            if (fm.stringWidth(label) > w - 10) {
                 font = new Font("Consolas", Font.BOLD, 9);
                 g.setFont(font);
                 fm = g.getFontMetrics();
             }
-            if (fm.stringWidth(pill.label) > w - 8) {
+            if (fm.stringWidth(label) > w - 8) {
                 font = new Font("Consolas", Font.PLAIN, 9);
                 g.setFont(font);
                 fm = g.getFontMetrics();
             }
+            if (fm.stringWidth(label) > w - 8) {
+                font = new Font("Consolas", Font.PLAIN, 8);
+                g.setFont(font);
+                fm = g.getFontMetrics();
+            }
+            // If still too wide, truncate cleanly with ellipsis
+            if (fm.stringWidth(label) > w - 8) {
+                while (label.length() > 3 && fm.stringWidth(label + "..") > w - 8) {
+                    label = label.substring(0, label.length() - 1);
+                }
+                label = label + "..";
+            }
 
             // Mathematically centered text
             int textY = ((h - fm.getHeight()) / 2) + fm.getAscent();
-            g.drawString(pill.label, 6, textY);
+            g.drawString(label, 6, textY);
 
             g.dispose();
             return new PreparedImage(image);
@@ -874,7 +926,10 @@ public class InstitutionalLevelsAddon implements
         if (atIdx >= 0) {
             s = s.substring(0, atIdx);
         }
+        s = s.replace("-", "").replace("/", "").replace("_", "");
         if (s.endsWith("USDT")) {
+            s = s.substring(0, s.length() - 4);
+        } else if (s.endsWith("USDC")) {
             s = s.substring(0, s.length() - 4);
         } else if (s.endsWith("USD")) {
             s = s.substring(0, s.length() - 3);
@@ -940,7 +995,9 @@ public class InstitutionalLevelsAddon implements
                 if (c == '"') return parseString();
                 if (c == 't' || c == 'f') return parseBoolean();
                 if (c == 'n') return parseNull();
-                return parseNumber();
+                if (Character.isDigit(c) || c == '-' || c == '+') return parseNumber();
+                pos++; // Unrecognized character fallback to prevent infinite loops
+                return null;
             }
 
             Map<String, Object> parseObject() {
@@ -988,7 +1045,14 @@ public class InstitutionalLevelsAddon implements
             }
 
             String parseString() {
-                if (pos >= src.length() || src.charAt(pos) != '"') return "";
+                if (pos >= src.length()) return "";
+                if (src.charAt(pos) != '"') {
+                    int s = pos;
+                    while (pos < src.length() && src.charAt(pos) != ':' && src.charAt(pos) != ',' && src.charAt(pos) != '}' && !Character.isWhitespace(src.charAt(pos))) {
+                        pos++;
+                    }
+                    return src.substring(s, pos).trim();
+                }
                 pos++; // skip opening '"'
                 StringBuilder sb = new StringBuilder();
                 while (pos < src.length()) {
@@ -1019,11 +1083,13 @@ public class InstitutionalLevelsAddon implements
             Boolean parseBoolean() {
                 if (src.startsWith("true", pos)) { pos += 4; return Boolean.TRUE; }
                 if (src.startsWith("false", pos)) { pos += 5; return Boolean.FALSE; }
+                pos++;
                 return Boolean.FALSE;
             }
 
             Object parseNull() {
                 if (src.startsWith("null", pos)) { pos += 4; }
+                else { pos++; }
                 return null;
             }
 
@@ -1039,6 +1105,10 @@ public class InstitutionalLevelsAddon implements
                     } else {
                         break;
                     }
+                }
+                if (start == pos) {
+                    pos++;
+                    return 0.0;
                 }
                 String numStr = src.substring(start, pos);
                 try {
