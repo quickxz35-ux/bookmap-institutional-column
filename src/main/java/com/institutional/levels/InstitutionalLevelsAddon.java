@@ -313,6 +313,36 @@ public class InstitutionalLevelsAddon implements
         private static final Color COLOR_WH_ASK_BORDER = new Color(0xFF, 0x44, 0x44);
         private static final Color COLOR_WH_ASK_TEXT = Color.WHITE;
 
+        // Smart Trader Active Entry: Deep Indigo #1A0B2E, Electric Violet #B388FF, White text
+        private static final Color COLOR_SM_ENT_BG = new Color(0x1A, 0x0B, 0x2E, 245);
+        private static final Color COLOR_SM_ENT_BORDER = new Color(0xB3, 0x88, 0xFF);
+        private static final Color COLOR_SM_ENT_TEXT = Color.WHITE;
+
+        // Smart Trader Liquidation Magnet: Deep Crimson #3A0505, Bright Crimson #FF1744, White text
+        private static final Color COLOR_SM_LIQ_BG = new Color(0x3A, 0x05, 0x05, 245);
+        private static final Color COLOR_SM_LIQ_BORDER = new Color(0xFF, 0x17, 0x44);
+        private static final Color COLOR_SM_LIQ_TEXT = Color.WHITE;
+
+        // Smart Trader Take Profit Wall: Obsidian Gold #341C04, Electric Amber #FFD600, Yellow text #FFF59D
+        private static final Color COLOR_SM_TP_BG = new Color(0x34, 0x1C, 0x04, 245);
+        private static final Color COLOR_SM_TP_BORDER = new Color(0xFF, 0xD6, 0x00);
+        private static final Color COLOR_SM_TP_TEXT = new Color(0xFF, 0xF5, 0x9D);
+
+        // Smart Trader Stop Loss Pocket: Deep Magenta #2D0A26, Vivid Pink #FF4081, White text
+        private static final Color COLOR_SM_SL_BG = new Color(0x2D, 0x0A, 0x26, 245);
+        private static final Color COLOR_SM_SL_BORDER = new Color(0xFF, 0x40, 0x81);
+        private static final Color COLOR_SM_SL_TEXT = Color.WHITE;
+
+        // Smart Trader Resting Bids: Deep Emerald #052A18, Neon Mint #00E676, White text
+        private static final Color COLOR_SM_BID_BG = new Color(0x05, 0x2A, 0x18, 245);
+        private static final Color COLOR_SM_BID_BORDER = new Color(0x00, 0xE6, 0x76);
+        private static final Color COLOR_SM_BID_TEXT = Color.WHITE;
+
+        // Smart Trader Resting Asks: Deep Crimson #2A0A0E, Red #FF4444, White text
+        private static final Color COLOR_SM_ASK_BG = new Color(0x2A, 0x0A, 0x0E, 245);
+        private static final Color COLOR_SM_ASK_BORDER = new Color(0xFF, 0x44, 0x44);
+        private static final Color COLOR_SM_ASK_TEXT = Color.WHITE;
+
         private final ScreenSpaceCanvas canvas;
         private final String alias;
         private final String coinSymbol;
@@ -604,7 +634,7 @@ public class InstitutionalLevelsAddon implements
                     }
                 }
 
-                // 7. Whale Positions (entries, liquidations) -> WH-ENT: <px> ($<usd>) and WH-LIQ: <px> ($<usd>)
+                // 7. Whale / Smart Trader Positions (entries, liquidations)
                 Map<String, Object> wp = SimpleJson.asMap(root.get("whale_positions"));
                 if (wp != null) {
                     List<Object> entries = getListField(wp, "entries", "whale_entries");
@@ -617,12 +647,13 @@ public class InstitutionalLevelsAddon implements
                             if (label.isEmpty()) {
                                 label = "WH-ENT: " + formatPrice(p) + (usd > 0 ? " ($" + formatUsd(usd) + ")" : "");
                             }
+                            boolean isSm = label.startsWith("SM-ENT:") || "SM-ENT".equals(SimpleJson.asString(m.get("tag")));
                             pills.add(new LevelPill(
                                     label, p,
-                                    COLOR_WH_ENT_BG,
-                                    COLOR_WH_ENT_BORDER,
-                                    COLOR_WH_ENT_TEXT,
-                                    82
+                                    isSm ? COLOR_SM_ENT_BG : COLOR_WH_ENT_BG,
+                                    isSm ? COLOR_SM_ENT_BORDER : COLOR_WH_ENT_BORDER,
+                                    isSm ? COLOR_SM_ENT_TEXT : COLOR_WH_ENT_TEXT,
+                                    isSm ? 85 : 82
                             ));
                         }
                     }
@@ -637,18 +668,19 @@ public class InstitutionalLevelsAddon implements
                             if (label.isEmpty()) {
                                 label = "WH-LIQ: " + formatPrice(p) + (usd > 0 ? " ($" + formatUsd(usd) + ")" : "");
                             }
+                            boolean isSm = label.startsWith("SM-LIQ:") || "SM-LIQ".equals(SimpleJson.asString(m.get("tag")));
                             pills.add(new LevelPill(
                                     label, p,
-                                    COLOR_WH_LIQ_BG,
-                                    COLOR_WH_LIQ_BORDER,
-                                    COLOR_WH_LIQ_TEXT,
-                                    88
+                                    isSm ? COLOR_SM_LIQ_BG : COLOR_WH_LIQ_BG,
+                                    isSm ? COLOR_SM_LIQ_BORDER : COLOR_WH_LIQ_BORDER,
+                                    isSm ? COLOR_SM_LIQ_TEXT : COLOR_WH_LIQ_TEXT,
+                                    isSm ? 89 : 88
                             ));
                         }
                     }
                 }
 
-                // 8. Whale Orders (take_profits, stop_losses, resting_bids, resting_asks)
+                // 8. Whale / Smart Trader Orders (take_profits, stop_losses, resting_bids, resting_asks)
                 Map<String, Object> wo = SimpleJson.asMap(root.get("whale_orders"));
                 if (wo == null) {
                     wo = SimpleJson.asMap(root.get("whale_unfilled"));
@@ -665,12 +697,13 @@ public class InstitutionalLevelsAddon implements
                             if (label.isEmpty()) {
                                 label = "WH-TP: " + formatPrice(p) + (usd > 0 ? " ($" + formatUsd(usd) + ")" : "");
                             }
+                            boolean isSm = label.startsWith("SM-TP:") || "SM-TP".equals(SimpleJson.asString(m.get("tag")));
                             pills.add(new LevelPill(
                                     label, p,
-                                    COLOR_WH_TP_BG,
-                                    COLOR_WH_TP_BORDER,
-                                    COLOR_WH_TP_TEXT,
-                                    86
+                                    isSm ? COLOR_SM_TP_BG : COLOR_WH_TP_BG,
+                                    isSm ? COLOR_SM_TP_BORDER : COLOR_WH_TP_BORDER,
+                                    isSm ? COLOR_SM_TP_TEXT : COLOR_WH_TP_TEXT,
+                                    isSm ? 87 : 86
                             ));
                         }
                     }
@@ -686,12 +719,13 @@ public class InstitutionalLevelsAddon implements
                             if (label.isEmpty()) {
                                 label = "WH-SL: " + formatPrice(p) + (usd > 0 ? " ($" + formatUsd(usd) + ")" : "");
                             }
+                            boolean isSm = label.startsWith("SM-SL:") || "SM-SL".equals(SimpleJson.asString(m.get("tag")));
                             pills.add(new LevelPill(
                                     label, p,
-                                    COLOR_WH_SL_BG,
-                                    COLOR_WH_SL_BORDER,
-                                    COLOR_WH_SL_TEXT,
-                                    87
+                                    isSm ? COLOR_SM_SL_BG : COLOR_WH_SL_BG,
+                                    isSm ? COLOR_SM_SL_BORDER : COLOR_WH_SL_BORDER,
+                                    isSm ? COLOR_SM_SL_TEXT : COLOR_WH_SL_TEXT,
+                                    isSm ? 88 : 87
                             ));
                         }
                     }
@@ -707,12 +741,13 @@ public class InstitutionalLevelsAddon implements
                             if (label.isEmpty()) {
                                 label = "WHL BID: " + formatPrice(p) + (usd > 0 ? " ($" + formatUsd(usd) + ")" : "");
                             }
+                            boolean isSm = label.startsWith("SM BID:") || label.startsWith("SM-BID:") || "SM-BID".equals(SimpleJson.asString(m.get("tag")));
                             pills.add(new LevelPill(
                                     label, p,
-                                    COLOR_WH_BID_BG,
-                                    COLOR_WH_BID_BORDER,
-                                    COLOR_WH_BID_TEXT,
-                                    75
+                                    isSm ? COLOR_SM_BID_BG : COLOR_WH_BID_BG,
+                                    isSm ? COLOR_SM_BID_BORDER : COLOR_WH_BID_BORDER,
+                                    isSm ? COLOR_SM_BID_TEXT : COLOR_WH_BID_TEXT,
+                                    isSm ? 78 : 75
                             ));
                         }
                     }
@@ -728,12 +763,13 @@ public class InstitutionalLevelsAddon implements
                             if (label.isEmpty()) {
                                 label = "WHL ASK: " + formatPrice(p) + (usd > 0 ? " ($" + formatUsd(usd) + ")" : "");
                             }
+                            boolean isSm = label.startsWith("SM ASK:") || label.startsWith("SM-ASK:") || "SM-ASK".equals(SimpleJson.asString(m.get("tag")));
                             pills.add(new LevelPill(
                                     label, p,
-                                    COLOR_WH_ASK_BG,
-                                    COLOR_WH_ASK_BORDER,
-                                    COLOR_WH_ASK_TEXT,
-                                    75
+                                    isSm ? COLOR_SM_ASK_BG : COLOR_WH_ASK_BG,
+                                    isSm ? COLOR_SM_ASK_BORDER : COLOR_WH_ASK_BORDER,
+                                    isSm ? COLOR_SM_ASK_TEXT : COLOR_WH_ASK_TEXT,
+                                    isSm ? 78 : 75
                             ));
                         }
                     }
@@ -914,12 +950,18 @@ public class InstitutionalLevelsAddon implements
             if (label.startsWith("CEX OUT:")) return "CEX-OUT";
             if (label.startsWith("WHL BUY:")) return "W-BUY";
             if (label.startsWith("WHL SELL:")) return "W-SELL";
+            if (label.startsWith("SM-ENT:")) return "SM-ENT";
+            if (label.startsWith("SM-LIQ:")) return "SM-LIQ";
+            if (label.startsWith("SM-TP:")) return "SM-TP";
+            if (label.startsWith("SM-SL:")) return "SM-SL";
+            if (label.startsWith("SM BID:") || label.startsWith("SM-BID:")) return "SM-BID";
+            if (label.startsWith("SM ASK:") || label.startsWith("SM-ASK:")) return "SM-ASK";
             if (label.startsWith("WH-ENT:")) return "WH-ENT";
             if (label.startsWith("WH-LIQ:")) return "WH-LIQ";
             if (label.startsWith("WH-TP:")) return "WH-TP";
             if (label.startsWith("WH-SL:")) return "WH-SL";
-            if (label.startsWith("WHL BID:")) return "W-BID";
-            if (label.startsWith("WHL ASK:")) return "W-ASK";
+            if (label.startsWith("WHL BID:") || label.startsWith("WH BID:") || label.startsWith("W-BID:")) return "W-BID";
+            if (label.startsWith("WHL ASK:") || label.startsWith("WH ASK:") || label.startsWith("W-ASK:")) return "W-ASK";
             if (label.startsWith("OI-M:")) return "OI-M";
             if (label.startsWith("OI-S:")) return "OI-S";
             if (label.startsWith("OUTFLOW")) return "CEX-OUT";
