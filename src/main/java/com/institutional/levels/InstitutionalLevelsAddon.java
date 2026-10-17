@@ -352,6 +352,7 @@ public class InstitutionalLevelsAddon implements
         private final List<CanvasIcon> activeIcons = Collections.synchronizedList(new ArrayList<>());
         private volatile List<LevelPill> currentPills = Collections.emptyList();
         private double jsonPips = 0.0;
+        private volatile boolean disposed = false;
 
         public InstitutionalPainter(ScreenSpaceCanvas canvas, String alias) {
             this.canvas = canvas;
@@ -365,6 +366,7 @@ public class InstitutionalLevelsAddon implements
         }
 
         public void checkAndReload(boolean force) {
+            if (disposed) return;
             File file = resolveJsonFile(coinSymbol);
             if (file == null || !file.exists()) {
                 return;
@@ -439,7 +441,7 @@ public class InstitutionalLevelsAddon implements
                     if (rIdx > 2) break; // Enforce top 2
                     Map<String, Object> m = SimpleJson.asMap(o);
                     if (m != null && hasPrice(m)) {
-                        double p = getDoubleField(m, "price", "px");
+                        double p = getDoubleField(m, "price", "px", "level");
                         String label = "RES " + rIdx + ": " + formatPrice(p);
                         pills.add(new LevelPill(
                                 label, p,
@@ -459,7 +461,7 @@ public class InstitutionalLevelsAddon implements
                     if (sIdx > 2) break; // Enforce top 2
                     Map<String, Object> m = SimpleJson.asMap(o);
                     if (m != null && hasPrice(m)) {
-                        double p = getDoubleField(m, "price", "px");
+                        double p = getDoubleField(m, "price", "px", "level");
                         String label = "SUP " + sIdx + ": " + formatPrice(p);
                         pills.add(new LevelPill(
                                 label, p,
@@ -483,9 +485,12 @@ public class InstitutionalLevelsAddon implements
                     for (Object o : outflows) {
                         Map<String, Object> m = SimpleJson.asMap(o);
                         if (m != null && hasPrice(m)) {
-                            double p = getDoubleField(m, "price", "px");
+                            double p = getDoubleField(m, "price", "px", "level");
                             double usd = getUsdField(m, p);
-                            String label = "CEX OUT: " + formatPrice(p) + " ($" + formatUsd(usd) + ")";
+                            String label = SimpleJson.asString(m.get("label"));
+                            if (label.isEmpty()) {
+                                label = "CEX OUT: " + formatPrice(p) + (usd > 0 ? " ($" + formatUsd(usd) + ")" : "");
+                            }
                             pills.add(new LevelPill(
                                     label, p,
                                     COLOR_CEX_OUT_BG,
@@ -501,9 +506,12 @@ public class InstitutionalLevelsAddon implements
                     for (Object o : inflows) {
                         Map<String, Object> m = SimpleJson.asMap(o);
                         if (m != null && hasPrice(m)) {
-                            double p = getDoubleField(m, "price", "px");
+                            double p = getDoubleField(m, "price", "px", "level");
                             double usd = getUsdField(m, p);
-                            String label = "CEX IN: " + formatPrice(p) + " ($" + formatUsd(usd) + ")";
+                            String label = SimpleJson.asString(m.get("label"));
+                            if (label.isEmpty()) {
+                                label = "CEX IN: " + formatPrice(p) + (usd > 0 ? " ($" + formatUsd(usd) + ")" : "");
+                            }
                             pills.add(new LevelPill(
                                     label, p,
                                     COLOR_CEX_IN_BG,
@@ -526,9 +534,12 @@ public class InstitutionalLevelsAddon implements
                     for (Object o : buys) {
                         Map<String, Object> m = SimpleJson.asMap(o);
                         if (m != null && hasPrice(m)) {
-                            double p = getDoubleField(m, "price", "px");
+                            double p = getDoubleField(m, "price", "px", "level");
                             double usd = getUsdField(m, p);
-                            String label = "WHL BUY: " + formatPrice(p) + " ($" + formatUsd(usd) + ")";
+                            String label = SimpleJson.asString(m.get("label"));
+                            if (label.isEmpty()) {
+                                label = "WHL BUY: " + formatPrice(p) + (usd > 0 ? " ($" + formatUsd(usd) + ")" : "");
+                            }
                             pills.add(new LevelPill(
                                     label, p,
                                     COLOR_WHL_BUY_BG,
@@ -544,9 +555,12 @@ public class InstitutionalLevelsAddon implements
                     for (Object o : sells) {
                         Map<String, Object> m = SimpleJson.asMap(o);
                         if (m != null && hasPrice(m)) {
-                            double p = getDoubleField(m, "price", "px");
+                            double p = getDoubleField(m, "price", "px", "level");
                             double usd = getUsdField(m, p);
-                            String label = "WHL SELL: " + formatPrice(p) + " ($" + formatUsd(usd) + ")";
+                            String label = SimpleJson.asString(m.get("label"));
+                            if (label.isEmpty()) {
+                                label = "WHL SELL: " + formatPrice(p) + (usd > 0 ? " ($" + formatUsd(usd) + ")" : "");
+                            }
                             pills.add(new LevelPill(
                                     label, p,
                                     COLOR_WHL_SELL_BG,
@@ -565,9 +579,12 @@ public class InstitutionalLevelsAddon implements
                     for (Object o : mLongs) {
                         Map<String, Object> m = SimpleJson.asMap(o);
                         if (m != null && hasPrice(m)) {
-                            double p = getDoubleField(m, "price", "px");
+                            double p = getDoubleField(m, "price", "px", "level");
                             double pct = getPctField(m);
-                            String label = "OI-M: " + formatPrice(p) + " (" + formatPct(pct) + ")";
+                            String label = SimpleJson.asString(m.get("label"));
+                            if (label.isEmpty()) {
+                                label = "OI-M: " + formatPrice(p) + " (" + formatPct(pct) + ")";
+                            }
                             pills.add(new LevelPill(
                                     label, p,
                                     COLOR_OI_MACRO_BG,
@@ -582,9 +599,12 @@ public class InstitutionalLevelsAddon implements
                     for (Object o : mShorts) {
                         Map<String, Object> m = SimpleJson.asMap(o);
                         if (m != null && hasPrice(m)) {
-                            double p = getDoubleField(m, "price", "px");
+                            double p = getDoubleField(m, "price", "px", "level");
                             double pct = getPctField(m);
-                            String label = "OI-M: " + formatPrice(p) + " (" + formatPct(pct) + ")";
+                            String label = SimpleJson.asString(m.get("label"));
+                            if (label.isEmpty()) {
+                                label = "OI-M: " + formatPrice(p) + " (" + formatPct(pct) + ")";
+                            }
                             pills.add(new LevelPill(
                                     label, p,
                                     COLOR_OI_MACRO_BG,
@@ -603,9 +623,12 @@ public class InstitutionalLevelsAddon implements
                     for (Object o : sLongs) {
                         Map<String, Object> m = SimpleJson.asMap(o);
                         if (m != null && hasPrice(m)) {
-                            double p = getDoubleField(m, "price", "px");
+                            double p = getDoubleField(m, "price", "px", "level");
                             double pct = getPctField(m);
-                            String label = "OI-S: " + formatPrice(p) + " (" + formatPct(pct) + ")";
+                            String label = SimpleJson.asString(m.get("label"));
+                            if (label.isEmpty()) {
+                                label = "OI-S: " + formatPrice(p) + " (" + formatPct(pct) + ")";
+                            }
                             pills.add(new LevelPill(
                                     label, p,
                                     COLOR_OI_SCALP_BG,
@@ -620,9 +643,12 @@ public class InstitutionalLevelsAddon implements
                     for (Object o : sShorts) {
                         Map<String, Object> m = SimpleJson.asMap(o);
                         if (m != null && hasPrice(m)) {
-                            double p = getDoubleField(m, "price", "px");
+                            double p = getDoubleField(m, "price", "px", "level");
                             double pct = getPctField(m);
-                            String label = "OI-S: " + formatPrice(p) + " (" + formatPct(pct) + ")";
+                            String label = SimpleJson.asString(m.get("label"));
+                            if (label.isEmpty()) {
+                                label = "OI-S: " + formatPrice(p) + " (" + formatPct(pct) + ")";
+                            }
                             pills.add(new LevelPill(
                                     label, p,
                                     COLOR_OI_SCALP_BG,
@@ -636,18 +662,23 @@ public class InstitutionalLevelsAddon implements
 
                 // 7. Whale / Smart Trader Positions (entries, liquidations)
                 Map<String, Object> wp = SimpleJson.asMap(root.get("whale_positions"));
+                if (wp == null) {
+                    wp = SimpleJson.asMap(root.get("positions"));
+                }
                 if (wp != null) {
                     List<Object> entries = getListField(wp, "entries", "whale_entries");
                     for (Object o : entries) {
                         Map<String, Object> m = SimpleJson.asMap(o);
                         if (m != null && hasPrice(m)) {
-                            double p = getDoubleField(m, "price", "px");
+                            double p = getDoubleField(m, "price", "px", "level");
                             double usd = getUsdField(m, p);
                             String label = SimpleJson.asString(m.get("label"));
+                            String tag = SimpleJson.asString(m.get("tag"));
+                            String traderType = SimpleJson.asString(m.get("trader_type"));
+                            boolean isSm = label.startsWith("SM-ENT:") || label.startsWith("SM ENT:") || "SM-ENT".equalsIgnoreCase(tag) || "SM".equalsIgnoreCase(traderType) || tag.startsWith("SM");
                             if (label.isEmpty()) {
-                                label = "WH-ENT: " + formatPrice(p) + (usd > 0 ? " ($" + formatUsd(usd) + ")" : "");
+                                label = (isSm ? "SM-ENT: " : "WH-ENT: ") + formatPrice(p) + (usd > 0 ? " ($" + formatUsd(usd) + ")" : "");
                             }
-                            boolean isSm = label.startsWith("SM-ENT:") || "SM-ENT".equals(SimpleJson.asString(m.get("tag")));
                             pills.add(new LevelPill(
                                     label, p,
                                     isSm ? COLOR_SM_ENT_BG : COLOR_WH_ENT_BG,
@@ -662,13 +693,15 @@ public class InstitutionalLevelsAddon implements
                     for (Object o : liqs) {
                         Map<String, Object> m = SimpleJson.asMap(o);
                         if (m != null && hasPrice(m)) {
-                            double p = getDoubleField(m, "price", "px");
+                            double p = getDoubleField(m, "price", "px", "level");
                             double usd = getUsdField(m, p);
                             String label = SimpleJson.asString(m.get("label"));
+                            String tag = SimpleJson.asString(m.get("tag"));
+                            String traderType = SimpleJson.asString(m.get("trader_type"));
+                            boolean isSm = label.startsWith("SM-LIQ:") || label.startsWith("SM LIQ:") || "SM-LIQ".equalsIgnoreCase(tag) || "SM".equalsIgnoreCase(traderType) || tag.startsWith("SM");
                             if (label.isEmpty()) {
-                                label = "WH-LIQ: " + formatPrice(p) + (usd > 0 ? " ($" + formatUsd(usd) + ")" : "");
+                                label = (isSm ? "SM-LIQ: " : "WH-LIQ: ") + formatPrice(p) + (usd > 0 ? " ($" + formatUsd(usd) + ")" : "");
                             }
-                            boolean isSm = label.startsWith("SM-LIQ:") || "SM-LIQ".equals(SimpleJson.asString(m.get("tag")));
                             pills.add(new LevelPill(
                                     label, p,
                                     isSm ? COLOR_SM_LIQ_BG : COLOR_WH_LIQ_BG,
@@ -685,19 +718,24 @@ public class InstitutionalLevelsAddon implements
                 if (wo == null) {
                     wo = SimpleJson.asMap(root.get("whale_unfilled"));
                 }
+                if (wo == null) {
+                    wo = SimpleJson.asMap(root.get("orders"));
+                }
                 if (wo != null) {
                     // Take Profits
                     List<Object> tps = getListField(wo, "take_profits", "whale_tp_levels", "tp_levels", "tps");
                     for (Object o : tps) {
                         Map<String, Object> m = SimpleJson.asMap(o);
                         if (m != null && hasPrice(m)) {
-                            double p = getDoubleField(m, "price", "px");
+                            double p = getDoubleField(m, "price", "px", "level");
                             double usd = getUsdField(m, p);
                             String label = SimpleJson.asString(m.get("label"));
+                            String tag = SimpleJson.asString(m.get("tag"));
+                            String traderType = SimpleJson.asString(m.get("trader_type"));
+                            boolean isSm = label.startsWith("SM-TP:") || label.startsWith("SM TP:") || "SM-TP".equalsIgnoreCase(tag) || "SM".equalsIgnoreCase(traderType) || tag.startsWith("SM");
                             if (label.isEmpty()) {
-                                label = "WH-TP: " + formatPrice(p) + (usd > 0 ? " ($" + formatUsd(usd) + ")" : "");
+                                label = (isSm ? "SM-TP: " : "WH-TP: ") + formatPrice(p) + (usd > 0 ? " ($" + formatUsd(usd) + ")" : "");
                             }
-                            boolean isSm = label.startsWith("SM-TP:") || "SM-TP".equals(SimpleJson.asString(m.get("tag")));
                             pills.add(new LevelPill(
                                     label, p,
                                     isSm ? COLOR_SM_TP_BG : COLOR_WH_TP_BG,
@@ -713,13 +751,15 @@ public class InstitutionalLevelsAddon implements
                     for (Object o : sls) {
                         Map<String, Object> m = SimpleJson.asMap(o);
                         if (m != null && hasPrice(m)) {
-                            double p = getDoubleField(m, "price", "px");
+                            double p = getDoubleField(m, "price", "px", "level");
                             double usd = getUsdField(m, p);
                             String label = SimpleJson.asString(m.get("label"));
+                            String tag = SimpleJson.asString(m.get("tag"));
+                            String traderType = SimpleJson.asString(m.get("trader_type"));
+                            boolean isSm = label.startsWith("SM-SL:") || label.startsWith("SM SL:") || "SM-SL".equalsIgnoreCase(tag) || "SM".equalsIgnoreCase(traderType) || tag.startsWith("SM");
                             if (label.isEmpty()) {
-                                label = "WH-SL: " + formatPrice(p) + (usd > 0 ? " ($" + formatUsd(usd) + ")" : "");
+                                label = (isSm ? "SM-SL: " : "WH-SL: ") + formatPrice(p) + (usd > 0 ? " ($" + formatUsd(usd) + ")" : "");
                             }
-                            boolean isSm = label.startsWith("SM-SL:") || "SM-SL".equals(SimpleJson.asString(m.get("tag")));
                             pills.add(new LevelPill(
                                     label, p,
                                     isSm ? COLOR_SM_SL_BG : COLOR_WH_SL_BG,
@@ -735,13 +775,15 @@ public class InstitutionalLevelsAddon implements
                     for (Object o : bids) {
                         Map<String, Object> m = SimpleJson.asMap(o);
                         if (m != null && hasPrice(m)) {
-                            double p = getDoubleField(m, "price", "px");
+                            double p = getDoubleField(m, "price", "px", "level");
                             double usd = getUsdField(m, p);
                             String label = SimpleJson.asString(m.get("label"));
+                            String tag = SimpleJson.asString(m.get("tag"));
+                            String traderType = SimpleJson.asString(m.get("trader_type"));
+                            boolean isSm = label.startsWith("SM BID:") || label.startsWith("SM-BID:") || "SM-BID".equalsIgnoreCase(tag) || "SM".equalsIgnoreCase(traderType) || tag.startsWith("SM");
                             if (label.isEmpty()) {
-                                label = "WHL BID: " + formatPrice(p) + (usd > 0 ? " ($" + formatUsd(usd) + ")" : "");
+                                label = (isSm ? "SM-BID: " : "WH-BID: ") + formatPrice(p) + (usd > 0 ? " ($" + formatUsd(usd) + ")" : "");
                             }
-                            boolean isSm = label.startsWith("SM BID:") || label.startsWith("SM-BID:") || "SM-BID".equals(SimpleJson.asString(m.get("tag")));
                             pills.add(new LevelPill(
                                     label, p,
                                     isSm ? COLOR_SM_BID_BG : COLOR_WH_BID_BG,
@@ -757,13 +799,15 @@ public class InstitutionalLevelsAddon implements
                     for (Object o : asks) {
                         Map<String, Object> m = SimpleJson.asMap(o);
                         if (m != null && hasPrice(m)) {
-                            double p = getDoubleField(m, "price", "px");
+                            double p = getDoubleField(m, "price", "px", "level");
                             double usd = getUsdField(m, p);
                             String label = SimpleJson.asString(m.get("label"));
+                            String tag = SimpleJson.asString(m.get("tag"));
+                            String traderType = SimpleJson.asString(m.get("trader_type"));
+                            boolean isSm = label.startsWith("SM ASK:") || label.startsWith("SM-ASK:") || "SM-ASK".equalsIgnoreCase(tag) || "SM".equalsIgnoreCase(traderType) || tag.startsWith("SM");
                             if (label.isEmpty()) {
-                                label = "WHL ASK: " + formatPrice(p) + (usd > 0 ? " ($" + formatUsd(usd) + ")" : "");
+                                label = (isSm ? "SM-ASK: " : "WH-ASK: ") + formatPrice(p) + (usd > 0 ? " ($" + formatUsd(usd) + ")" : "");
                             }
-                            boolean isSm = label.startsWith("SM ASK:") || label.startsWith("SM-ASK:") || "SM-ASK".equals(SimpleJson.asString(m.get("tag")));
                             pills.add(new LevelPill(
                                     label, p,
                                     isSm ? COLOR_SM_ASK_BG : COLOR_WH_ASK_BG,
@@ -780,7 +824,7 @@ public class InstitutionalLevelsAddon implements
                 for (Object o : confs) {
                     Map<String, Object> m = SimpleJson.asMap(o);
                     if (m != null && hasPrice(m)) {
-                        double p = getDoubleField(m, "price", "px");
+                        double p = getDoubleField(m, "price", "px", "level");
                         String label = SimpleJson.asString(m.get("label"));
                         if (label.isEmpty()) {
                             String tag = SimpleJson.asString(m.get("tag"));
@@ -888,6 +932,8 @@ public class InstitutionalLevelsAddon implements
                         if (t != null && !t.isEmpty()) {
                             for (String part : t.split("\\+")) {
                                 part = part.trim();
+                                if ("W-BID".equals(part) || "WHL-BID".equals(part)) part = "WH-BID";
+                                if ("W-ASK".equals(part) || "WHL-ASK".equals(part)) part = "WH-ASK";
                                 if (!part.isEmpty() && !tags.contains(part)) {
                                     tags.add(part);
                                 }
@@ -934,38 +980,38 @@ public class InstitutionalLevelsAddon implements
 
         private String extractTag(String label) {
             if (label == null || label.isEmpty()) return "";
-            if (label.startsWith("CONF: ")) {
-                int spaceIdx = label.lastIndexOf(' ');
-                return spaceIdx > 6 ? label.substring(6, spaceIdx).trim() : label.substring(6).trim();
+            if (label.startsWith("CONF:") || label.startsWith("CONF: ")) {
+                String afterConf = label.substring(5).trim();
+                if (afterConf.startsWith(":")) afterConf = afterConf.substring(1).trim();
+                int spaceIdx = afterConf.lastIndexOf(' ');
+                return spaceIdx > 0 ? afterConf.substring(0, spaceIdx).trim() : afterConf;
             }
-            if (label.startsWith("RES ")) {
+            if (label.startsWith("RES ") || label.startsWith("RES:")) {
                 int colon = label.indexOf(':');
-                return colon > 4 ? "R" + label.substring(4, colon).trim() : "RES";
+                return colon > 3 ? "R" + label.substring(3, colon).trim() : "RES";
             }
-            if (label.startsWith("SUP ")) {
+            if (label.startsWith("SUP ") || label.startsWith("SUP:")) {
                 int colon = label.indexOf(':');
-                return colon > 4 ? "S" + label.substring(4, colon).trim() : "SUP";
+                return colon > 3 ? "S" + label.substring(3, colon).trim() : "SUP";
             }
-            if (label.startsWith("CEX IN:")) return "CEX-IN";
-            if (label.startsWith("CEX OUT:")) return "CEX-OUT";
-            if (label.startsWith("WHL BUY:")) return "W-BUY";
-            if (label.startsWith("WHL SELL:")) return "W-SELL";
-            if (label.startsWith("SM-ENT:")) return "SM-ENT";
-            if (label.startsWith("SM-LIQ:")) return "SM-LIQ";
-            if (label.startsWith("SM-TP:")) return "SM-TP";
-            if (label.startsWith("SM-SL:")) return "SM-SL";
+            if (label.startsWith("CEX IN:") || label.startsWith("CEX-IN:") || label.startsWith("CEX-IN") || label.startsWith("INFLOW")) return "CEX-IN";
+            if (label.startsWith("CEX OUT:") || label.startsWith("CEX-OUT:") || label.startsWith("CEX-OUT") || label.startsWith("OUTFLOW")) return "CEX-OUT";
+            if (label.startsWith("WHL BUY:") || label.startsWith("W-BUY:") || label.startsWith("WH-BUY:")) return "W-BUY";
+            if (label.startsWith("WHL SELL:") || label.startsWith("W-SELL:") || label.startsWith("WH-SELL:")) return "W-SELL";
+            if (label.startsWith("SM-ENT:") || label.startsWith("SM ENT:")) return "SM-ENT";
+            if (label.startsWith("SM-LIQ:") || label.startsWith("SM LIQ:")) return "SM-LIQ";
+            if (label.startsWith("SM-TP:") || label.startsWith("SM TP:")) return "SM-TP";
+            if (label.startsWith("SM-SL:") || label.startsWith("SM SL:")) return "SM-SL";
             if (label.startsWith("SM BID:") || label.startsWith("SM-BID:")) return "SM-BID";
             if (label.startsWith("SM ASK:") || label.startsWith("SM-ASK:")) return "SM-ASK";
-            if (label.startsWith("WH-ENT:")) return "WH-ENT";
-            if (label.startsWith("WH-LIQ:")) return "WH-LIQ";
-            if (label.startsWith("WH-TP:")) return "WH-TP";
-            if (label.startsWith("WH-SL:")) return "WH-SL";
-            if (label.startsWith("WHL BID:") || label.startsWith("WH BID:") || label.startsWith("W-BID:")) return "W-BID";
-            if (label.startsWith("WHL ASK:") || label.startsWith("WH ASK:") || label.startsWith("W-ASK:")) return "W-ASK";
-            if (label.startsWith("OI-M:")) return "OI-M";
-            if (label.startsWith("OI-S:")) return "OI-S";
-            if (label.startsWith("OUTFLOW")) return "CEX-OUT";
-            if (label.startsWith("INFLOW")) return "CEX-IN";
+            if (label.startsWith("WH-ENT:") || label.startsWith("WH ENT:")) return "WH-ENT";
+            if (label.startsWith("WH-LIQ:") || label.startsWith("WH LIQ:")) return "WH-LIQ";
+            if (label.startsWith("WH-TP:") || label.startsWith("WH TP:")) return "WH-TP";
+            if (label.startsWith("WH-SL:") || label.startsWith("WH SL:")) return "WH-SL";
+            if (label.startsWith("WH-BID:") || label.startsWith("WHL BID:") || label.startsWith("WH BID:") || label.startsWith("W-BID:")) return "WH-BID";
+            if (label.startsWith("WH-ASK:") || label.startsWith("WHL ASK:") || label.startsWith("WH ASK:") || label.startsWith("W-ASK:")) return "WH-ASK";
+            if (label.startsWith("OI-M:") || label.startsWith("OI-M")) return "OI-M";
+            if (label.startsWith("OI-S:") || label.startsWith("OI-S")) return "OI-S";
             int colon = label.indexOf(':');
             if (colon > 0) return label.substring(0, colon).trim();
             int space = label.indexOf(' ');
@@ -978,7 +1024,7 @@ public class InstitutionalLevelsAddon implements
         }
 
         public synchronized void update() {
-            if (canvas == null) return;
+            if (disposed || canvas == null) return;
 
             // Clear old icons
             synchronized (activeIcons) {
@@ -1121,14 +1167,19 @@ public class InstitutionalLevelsAddon implements
         }
 
         @Override
-        public void dispose() {
+        public synchronized void dispose() {
+            disposed = true;
             synchronized (activeIcons) {
                 for (CanvasIcon icon : activeIcons) {
-                    canvas.removeShape(icon);
+                    try {
+                        canvas.removeShape(icon);
+                    } catch (Throwable ignored) {}
                 }
                 activeIcons.clear();
             }
-            canvas.dispose();
+            try {
+                canvas.dispose();
+            } catch (Throwable ignored) {}
         }
     }
 

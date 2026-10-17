@@ -23,4 +23,15 @@ dependencies {
 
 jar {
     archiveFileName = 'institutional-levels-column.jar'
+    doLast {
+        def targetDir = file("${System.getProperty('user.home')}/.bookmap")
+        if (targetDir.exists()) {
+            copy {
+                from archiveFile
+                into targetDir
+            }
+            println "[build.gradle] Successfully updated institutional-levels-column.jar in ${targetDir}"
+        }
+    }
 }
+
