@@ -283,6 +283,36 @@ public class InstitutionalLevelsAddon implements
         private static final Color COLOR_RES_BORDER = new Color(0xFF, 0x44, 0x44);
         private static final Color COLOR_RES_TEXT = Color.WHITE;
 
+        // Whale Active Entry: Dark Teal #042630, Electric Cyan #00E5FF, White text
+        private static final Color COLOR_WH_ENT_BG = new Color(0x04, 0x26, 0x30, 245);
+        private static final Color COLOR_WH_ENT_BORDER = new Color(0x00, 0xE5, 0xFF);
+        private static final Color COLOR_WH_ENT_TEXT = Color.WHITE;
+
+        // Whale Liquidation Magnet: Deep Crimson #3A0505, Bright Crimson #FF1744, White text
+        private static final Color COLOR_WH_LIQ_BG = new Color(0x3A, 0x05, 0x05, 245);
+        private static final Color COLOR_WH_LIQ_BORDER = new Color(0xFF, 0x17, 0x44);
+        private static final Color COLOR_WH_LIQ_TEXT = Color.WHITE;
+
+        // Whale Take Profit Wall: Obsidian Gold #341C04, Electric Amber #FFD600, Yellow text #FFF59D
+        private static final Color COLOR_WH_TP_BG = new Color(0x34, 0x1C, 0x04, 245);
+        private static final Color COLOR_WH_TP_BORDER = new Color(0xFF, 0xD6, 0x00);
+        private static final Color COLOR_WH_TP_TEXT = new Color(0xFF, 0xF5, 0x9D);
+
+        // Whale Stop Loss Pocket: Deep Magenta #2D0A26, Vivid Pink #FF4081, White text
+        private static final Color COLOR_WH_SL_BG = new Color(0x2D, 0x0A, 0x26, 245);
+        private static final Color COLOR_WH_SL_BORDER = new Color(0xFF, 0x40, 0x81);
+        private static final Color COLOR_WH_SL_TEXT = Color.WHITE;
+
+        // Whale Resting Bids: Deep Forest #0A2A14, Lime #00E676, White text
+        private static final Color COLOR_WH_BID_BG = new Color(0x0A, 0x2A, 0x14, 245);
+        private static final Color COLOR_WH_BID_BORDER = new Color(0x00, 0xE6, 0x76);
+        private static final Color COLOR_WH_BID_TEXT = Color.WHITE;
+
+        // Whale Resting Asks: Deep Crimson #2A0A0E, Red #FF4444, White text
+        private static final Color COLOR_WH_ASK_BG = new Color(0x2A, 0x0A, 0x0E, 245);
+        private static final Color COLOR_WH_ASK_BORDER = new Color(0xFF, 0x44, 0x44);
+        private static final Color COLOR_WH_ASK_TEXT = Color.WHITE;
+
         private final ScreenSpaceCanvas canvas;
         private final String alias;
         private final String coinSymbol;
@@ -574,7 +604,142 @@ public class InstitutionalLevelsAddon implements
                     }
                 }
 
-                // 7. Direct / Pre-computed Confluences
+                // 7. Whale Positions (entries, liquidations) -> WH-ENT: <px> ($<usd>) and WH-LIQ: <px> ($<usd>)
+                Map<String, Object> wp = SimpleJson.asMap(root.get("whale_positions"));
+                if (wp != null) {
+                    List<Object> entries = getListField(wp, "entries", "whale_entries");
+                    for (Object o : entries) {
+                        Map<String, Object> m = SimpleJson.asMap(o);
+                        if (m != null && hasPrice(m)) {
+                            double p = getDoubleField(m, "price", "px");
+                            double usd = getUsdField(m, p);
+                            String label = SimpleJson.asString(m.get("label"));
+                            if (label.isEmpty()) {
+                                label = "WH-ENT: " + formatPrice(p) + (usd > 0 ? " ($" + formatUsd(usd) + ")" : "");
+                            }
+                            pills.add(new LevelPill(
+                                    label, p,
+                                    COLOR_WH_ENT_BG,
+                                    COLOR_WH_ENT_BORDER,
+                                    COLOR_WH_ENT_TEXT,
+                                    82
+                            ));
+                        }
+                    }
+
+                    List<Object> liqs = getListField(wp, "liquidations", "whale_liquidations");
+                    for (Object o : liqs) {
+                        Map<String, Object> m = SimpleJson.asMap(o);
+                        if (m != null && hasPrice(m)) {
+                            double p = getDoubleField(m, "price", "px");
+                            double usd = getUsdField(m, p);
+                            String label = SimpleJson.asString(m.get("label"));
+                            if (label.isEmpty()) {
+                                label = "WH-LIQ: " + formatPrice(p) + (usd > 0 ? " ($" + formatUsd(usd) + ")" : "");
+                            }
+                            pills.add(new LevelPill(
+                                    label, p,
+                                    COLOR_WH_LIQ_BG,
+                                    COLOR_WH_LIQ_BORDER,
+                                    COLOR_WH_LIQ_TEXT,
+                                    88
+                            ));
+                        }
+                    }
+                }
+
+                // 8. Whale Orders (take_profits, stop_losses, resting_bids, resting_asks)
+                Map<String, Object> wo = SimpleJson.asMap(root.get("whale_orders"));
+                if (wo == null) {
+                    wo = SimpleJson.asMap(root.get("whale_unfilled"));
+                }
+                if (wo != null) {
+                    // Take Profits
+                    List<Object> tps = getListField(wo, "take_profits", "whale_tp_levels", "tp_levels", "tps");
+                    for (Object o : tps) {
+                        Map<String, Object> m = SimpleJson.asMap(o);
+                        if (m != null && hasPrice(m)) {
+                            double p = getDoubleField(m, "price", "px");
+                            double usd = getUsdField(m, p);
+                            String label = SimpleJson.asString(m.get("label"));
+                            if (label.isEmpty()) {
+                                label = "WH-TP: " + formatPrice(p) + (usd > 0 ? " ($" + formatUsd(usd) + ")" : "");
+                            }
+                            pills.add(new LevelPill(
+                                    label, p,
+                                    COLOR_WH_TP_BG,
+                                    COLOR_WH_TP_BORDER,
+                                    COLOR_WH_TP_TEXT,
+                                    86
+                            ));
+                        }
+                    }
+
+                    // Stop Losses
+                    List<Object> sls = getListField(wo, "stop_losses", "whale_sl_levels", "sl_levels", "sls");
+                    for (Object o : sls) {
+                        Map<String, Object> m = SimpleJson.asMap(o);
+                        if (m != null && hasPrice(m)) {
+                            double p = getDoubleField(m, "price", "px");
+                            double usd = getUsdField(m, p);
+                            String label = SimpleJson.asString(m.get("label"));
+                            if (label.isEmpty()) {
+                                label = "WH-SL: " + formatPrice(p) + (usd > 0 ? " ($" + formatUsd(usd) + ")" : "");
+                            }
+                            pills.add(new LevelPill(
+                                    label, p,
+                                    COLOR_WH_SL_BG,
+                                    COLOR_WH_SL_BORDER,
+                                    COLOR_WH_SL_TEXT,
+                                    87
+                            ));
+                        }
+                    }
+
+                    // Resting Bids
+                    List<Object> bids = getListField(wo, "resting_bids", "whale_bids", "bids");
+                    for (Object o : bids) {
+                        Map<String, Object> m = SimpleJson.asMap(o);
+                        if (m != null && hasPrice(m)) {
+                            double p = getDoubleField(m, "price", "px");
+                            double usd = getUsdField(m, p);
+                            String label = SimpleJson.asString(m.get("label"));
+                            if (label.isEmpty()) {
+                                label = "WHL BID: " + formatPrice(p) + (usd > 0 ? " ($" + formatUsd(usd) + ")" : "");
+                            }
+                            pills.add(new LevelPill(
+                                    label, p,
+                                    COLOR_WH_BID_BG,
+                                    COLOR_WH_BID_BORDER,
+                                    COLOR_WH_BID_TEXT,
+                                    75
+                            ));
+                        }
+                    }
+
+                    // Resting Asks
+                    List<Object> asks = getListField(wo, "resting_asks", "whale_asks", "asks");
+                    for (Object o : asks) {
+                        Map<String, Object> m = SimpleJson.asMap(o);
+                        if (m != null && hasPrice(m)) {
+                            double p = getDoubleField(m, "price", "px");
+                            double usd = getUsdField(m, p);
+                            String label = SimpleJson.asString(m.get("label"));
+                            if (label.isEmpty()) {
+                                label = "WHL ASK: " + formatPrice(p) + (usd > 0 ? " ($" + formatUsd(usd) + ")" : "");
+                            }
+                            pills.add(new LevelPill(
+                                    label, p,
+                                    COLOR_WH_ASK_BG,
+                                    COLOR_WH_ASK_BORDER,
+                                    COLOR_WH_ASK_TEXT,
+                                    75
+                            ));
+                        }
+                    }
+                }
+
+                // 9. Direct / Pre-computed Confluences
                 List<Object> confs = getListField(root, "confluences", "super_confluences");
                 for (Object o : confs) {
                     Map<String, Object> m = SimpleJson.asMap(o);
@@ -749,6 +914,12 @@ public class InstitutionalLevelsAddon implements
             if (label.startsWith("CEX OUT:")) return "CEX-OUT";
             if (label.startsWith("WHL BUY:")) return "W-BUY";
             if (label.startsWith("WHL SELL:")) return "W-SELL";
+            if (label.startsWith("WH-ENT:")) return "WH-ENT";
+            if (label.startsWith("WH-LIQ:")) return "WH-LIQ";
+            if (label.startsWith("WH-TP:")) return "WH-TP";
+            if (label.startsWith("WH-SL:")) return "WH-SL";
+            if (label.startsWith("WHL BID:")) return "W-BID";
+            if (label.startsWith("WHL ASK:")) return "W-ASK";
             if (label.startsWith("OI-M:")) return "OI-M";
             if (label.startsWith("OI-S:")) return "OI-S";
             if (label.startsWith("OUTFLOW")) return "CEX-OUT";
