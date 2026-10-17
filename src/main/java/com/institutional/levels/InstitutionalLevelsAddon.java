@@ -80,7 +80,9 @@ public class InstitutionalLevelsAddon implements
 
     public InstitutionalLevelsAddon(Layer1ApiProvider provider) {
         this.provider = provider;
-        ListenableHelper.addListeners(provider, this);
+        if (provider != null) {
+            ListenableHelper.addListeners(provider, this);
+        }
         System.out.println("[InstitutionalLevels] Initialized addon with provider");
 
         // Pre-register indicator
@@ -98,7 +100,9 @@ public class InstitutionalLevelsAddon implements
             for (String userName : indicatorsFullNameToUserName.values()) {
                 Layer1ApiUserMessageModifyScreenSpacePainter message = Layer1ApiUserMessageModifyScreenSpacePainter
                         .builder(InstitutionalLevelsAddon.class, userName).setIsAdd(false).build();
-                provider.sendUserMessage(message);
+                if (provider != null) {
+                    provider.sendUserMessage(message);
+                }
             }
         }
 
@@ -131,7 +135,9 @@ public class InstitutionalLevelsAddon implements
             indicatorsUserNameToFullName.put(message.userName, message.fullName);
         }
         System.out.println("[InstitutionalLevels] Registered indicator: " + message.fullName);
-        provider.sendUserMessage(message);
+        if (provider != null) {
+            provider.sendUserMessage(message);
+        }
     }
 
     @Override
