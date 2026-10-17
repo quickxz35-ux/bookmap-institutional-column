@@ -418,7 +418,7 @@ public class InstitutionalLevelsAddon implements
             return false;
         }
 
-        private List<LevelPill> loadJsonData(File file) {
+        List<LevelPill> loadJsonData(File file) {
             try {
                 String content = new String(Files.readAllBytes(file.toPath()), "UTF-8");
                 Map<String, Object> root = SimpleJson.parseObject(content);
@@ -892,7 +892,7 @@ public class InstitutionalLevelsAddon implements
             return Collections.emptyList();
         }
 
-        private List<LevelPill> consolidateLevels(List<LevelPill> input, double currPrice) {
+        List<LevelPill> consolidateLevels(List<LevelPill> input, double currPrice) {
             if (input == null || input.isEmpty()) return Collections.emptyList();
 
             // Sort by price ascending
@@ -978,7 +978,7 @@ public class InstitutionalLevelsAddon implements
             return sum / cluster.size();
         }
 
-        private String extractTag(String label) {
+        String extractTag(String label) {
             if (label == null || label.isEmpty()) return "";
             if (label.startsWith("CONF:") || label.startsWith("CONF: ")) {
                 String afterConf = label.substring(5).trim();
@@ -1065,7 +1065,7 @@ public class InstitutionalLevelsAddon implements
             }
         }
 
-        private double estimatePips(double price) {
+        double estimatePips(double price) {
             if (price >= 1000.0) return 0.1;
             if (price >= 100.0) return 0.01;
             if (price >= 1.0) return 0.001;
@@ -1183,7 +1183,7 @@ public class InstitutionalLevelsAddon implements
         }
     }
 
-    private static String cleanSymbol(String alias) {
+    static String cleanSymbol(String alias) {
         if (alias == null) return "UNKNOWN";
         String s = alias.trim().toUpperCase();
         int atIdx = s.indexOf('@');
