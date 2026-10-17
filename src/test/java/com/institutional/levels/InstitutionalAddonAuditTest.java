@@ -54,14 +54,15 @@ public class InstitutionalAddonAuditTest {
         testMaxVisiblePillsEnforcement();
         testCoordinateAndPipsMath();
         testEndToEndJsonParsing();
+        testMacroAndScalpOiPills();
+        testEmptyWhalePositionsAndOrdersGracefulHandling();
+        testRealBookmapJsonFiles();
 
         System.out.println("================================================================================");
         System.out.println("AUDIT RESULTS: " + testsPassed + " PASSED, " + testsFailed + " FAILED");
         System.out.println("================================================================================");
 
-        if (testsFailed > 0) {
-            System.exit(1);
-        }
+        System.exit(testsFailed > 0 ? 1 : 0);
     }
 
     private static void testSimpleJsonRobustness() {
@@ -313,6 +314,251 @@ public class InstitutionalAddonAuditTest {
         } catch (Exception e) {
             e.printStackTrace();
             testsFailed++;
+        }
+    }
+
+    private static void testMacroAndScalpOiPills() {
+        System.out.println("\n--- 7. Macro OI (OI-M) & Scalp OI (OI-S) Badge & Confluence Tests ---");
+
+        InstitutionalLevelsAddon addon = new InstitutionalLevelsAddon(null);
+        InstitutionalLevelsAddon.InstitutionalPainter painter = addon.new InstitutionalPainter(null, "BTCUSDT");
+
+        // 1. Check formatPct syntax
+        assertEquals("+1%", painter.formatPct(1.0), "formatPct(1.0) -> +1%");
+        assertEquals("+5.2%", painter.formatPct(5.2), "formatPct(5.2) -> +5.2%");
+        assertEquals("+0.5%", painter.formatPct(0.5), "formatPct(0.5) -> +0.5%");
+        assertEquals("-2.5%", painter.formatPct(-2.5), "formatPct(-2.5) -> -2.5%");
+        assertEquals("+0%", painter.formatPct(0.0), "formatPct(0.0) -> +0%");
+
+        // 2. Parse synthetic JSON containing only OI-M and OI-S
+        try {
+            File oiJson = File.createTempFile("institutional_oi_test_", ".json");
+            oiJson.deleteOnExit();
+
+            String json = "{\n" +
+                    "  \"coin\": \"BTC\",\n" +
+                    "  \"current_price\": 65000.0,\n" +
+                    "  \"pips\": 0.1,\n" +
+                    "  \"macro_oi\": {\n" +
+                    "    \"macro_longs\": [{\"price\": 64000.0, \"pct\": 3.5}],\n" +
+                    "    \"macro_shorts\": [{\"price\": 66000.0, \"pct\": 1.0, \"label\": \"OI-M: 66000.0 (+1%)\"}]\n" +
+                    "  },\n" +
+                    "  \"scalp_oi\": {\n" +
+                    "    \"scalp_longs\": [{\"price\": 64800.0, \"pct\": 0.5}],\n" +
+                    "    \"scalp_shorts\": [{\"price\": 65200.0, \"pct\": 2.0, \"label\": \"OI-S: 65200.0 (+2%)\"}]\n" +
+                    "  }\n" +
+                    "}";
+            Files.write(oiJson.toPath(), json.getBytes("UTF-8"));
+
+            List<InstitutionalLevelsAddon.LevelPill> pills = painter.loadJsonData(oiJson);
+            assertTrue(pills != null && pills.size() == 4, "Loaded 4 OI pills (2 macro, 2 scalp)");
+
+            // Find OI-M and OI-S pills
+            InstitutionalLevelsAddon.LevelPill oiMLong = pills.stream().filter(p -> p.price == 64000.0).findFirst().orElse(null);
+            InstitutionalLevelsAddon.LevelPill oiMShort = pills.stream().filter(p -> p.price == 66000.0).findFirst().orElse(null);
+            InstitutionalLevelsAddon.LevelPill oiSLong = pills.stream().filter(p -> p.price == 64800.0).findFirst().orElse(null);
+            InstitutionalLevelsAddon.LevelPill oiSShort = pills.stream().filter(p -> p.price == 65200.0).findFirst().orElse(null);
+
+            assertTrue(oiMLong != null, "Found OI-M Long pill");
+            assertTrue(oiMShort != null, "Found OI-M Short pill");
+            assertTrue(oiSLong != null, "Found OI-S Long pill");
+            assertTrue(oiSShort != null, "Found OI-S Short pill");
+
+            // Verify OI-M colors & priority: Deep Navy #0D1B2A, Electric Blue #00B4D8, White text, Priority 60
+            assertEquals(60, oiMLong.priority, "OI-M priority is 60");
+            assertEquals(new Color(0x0D, 0x1B, 0x2A, 245), oiMLong.bgColor, "OI-M background is Deep Navy #0D1B2A");
+            assertEquals(new Color(0x00, 0xB4, 0xD8), oiMLong.borderColor, "OI-M border is Electric Blue #00B4D8");
+            assertEquals(Color.WHITE, oiMLong.textColor, "OI-M text is White");
+            assertTrue(oiMLong.label.contains("OI-M:") && oiMLong.label.contains("(+3.5%)"), "OI-M label syntax (+3.5%): " + oiMLong.label);
+
+            // Verify OI-S colors & priority: Charcoal Slate #1E2229, Orange #FF9E00, Peach text #FFD180, Priority 50
+            assertEquals(50, oiSLong.priority, "OI-S priority is 50");
+            assertEquals(new Color(0x1E, 0x22, 0x29, 245), oiSLong.bgColor, "OI-S background is Charcoal Slate #1E2229");
+            assertEquals(new Color(0xFF, 0x9E, 0x00), oiSLong.borderColor, "OI-S border is Orange #FF9E00");
+            assertEquals(new Color(0xFF, 0xD1, 0x80), oiSLong.textColor, "OI-S text is Peach #FFD180");
+            assertTrue(oiSLong.label.contains("OI-S:") && oiSLong.label.contains("(+0.5%)"), "OI-S label syntax (+0.5%): " + oiSLong.label);
+
+            // 3. Verify merging into CONF: (Priority 100) when coincident with support/resistance within 0.20%
+            // Place SUP 1 at 64050.0 (diff with 64000.0 is 50 / 64000 = 0.078% < 0.20%)
+            List<InstitutionalLevelsAddon.LevelPill> mergeTestPills = new ArrayList<>();
+            mergeTestPills.add(new InstitutionalLevelsAddon.LevelPill("SUP 1: 64050.0", 64050.0, Color.BLACK, Color.GREEN, Color.WHITE, 95));
+            mergeTestPills.add(oiMLong);
+
+            List<InstitutionalLevelsAddon.LevelPill> mergedSup = painter.consolidateLevels(mergeTestPills, 64000.0);
+            assertEquals(1, mergedSup.size(), "OI-M and SUP 1 consolidated into 1 pill");
+            InstitutionalLevelsAddon.LevelPill confSup = mergedSup.get(0);
+            assertEquals(100, confSup.priority, "Coincident CONF pill has Priority 100");
+            assertTrue(confSup.label.startsWith("CONF:"), "Label starts with CONF:");
+            assertTrue(confSup.label.contains("OI-M") && confSup.label.contains("S1"), "Merged label contains OI-M and S1: " + confSup.label);
+            assertEquals(new Color(0x34, 0x1C, 0x04, 245), confSup.bgColor, "CONF background is Obsidian Gold #341C04");
+            assertEquals(new Color(0xFF, 0xB3, 0x00), confSup.borderColor, "CONF border is Electric Amber #FFB300");
+            assertEquals(new Color(0xFF, 0xF5, 0x9D), confSup.textColor, "CONF text is Yellow #FFF59D");
+
+            // Place RES 1 at 65230.0 (diff with 65200.0 is 30 / 65200 = 0.046% < 0.20%)
+            List<InstitutionalLevelsAddon.LevelPill> mergeTestPills2 = new ArrayList<>();
+            mergeTestPills2.add(new InstitutionalLevelsAddon.LevelPill("RES 1: 65230.0", 65230.0, Color.BLACK, Color.RED, Color.WHITE, 95));
+            mergeTestPills2.add(oiSShort);
+
+            List<InstitutionalLevelsAddon.LevelPill> mergedRes = painter.consolidateLevels(mergeTestPills2, 65000.0);
+            assertEquals(1, mergedRes.size(), "OI-S and RES 1 consolidated into 1 pill");
+            InstitutionalLevelsAddon.LevelPill confRes = mergedRes.get(0);
+            assertEquals(100, confRes.priority, "Coincident CONF pill has Priority 100");
+            assertTrue(confRes.label.startsWith("CONF:") && confRes.label.contains("OI-S") && confRes.label.contains("R1"),
+                    "Merged label contains OI-S and R1: " + confRes.label);
+
+            // Test pill image generation with zero errors
+            Object img1 = painter.generatePillImage(150, 19, oiMLong);
+            Object img2 = painter.generatePillImage(150, 19, oiSLong);
+            Object img3 = painter.generatePillImage(150, 19, confSup);
+            assertTrue(img1 != null, "OI-M PreparedImage rendered cleanly");
+            assertTrue(img2 != null, "OI-S PreparedImage rendered cleanly");
+            assertTrue(img3 != null, "CONF PreparedImage rendered cleanly");
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            testsFailed++;
+        }
+    }
+
+    private static void testEmptyWhalePositionsAndOrdersGracefulHandling() {
+        System.out.println("\n--- 8. Empty Whale Positions / Orders Graceful Handling Tests ---");
+
+        InstitutionalLevelsAddon addon = new InstitutionalLevelsAddon(null);
+        InstitutionalLevelsAddon.InstitutionalPainter painter = addon.new InstitutionalPainter(null, "MAGICUSDT");
+
+        try {
+            File emptyWhaleJson = File.createTempFile("empty_whale_test_", ".json");
+            emptyWhaleJson.deleteOnExit();
+
+            // JSON with empty whale_positions and empty whale_orders (coins without verified trader data)
+            String json = "{\n" +
+                    "  \"coin\": \"MAGIC\",\n" +
+                    "  \"current_price\": 0.1115,\n" +
+                    "  \"pips\": 0.0001,\n" +
+                    "  \"top_resistances\": [\n" +
+                    "    {\"price\": 0.1180, \"score\": 85.0}\n" +
+                    "  ],\n" +
+                    "  \"top_supports\": [\n" +
+                    "    {\"price\": 0.1050, \"score\": 90.0}\n" +
+                    "  ],\n" +
+                    "  \"cex_flows\": {\n" +
+                    "    \"cex_outflows\": [{\"price\": 0.1080, \"usd\": 40000.0}],\n" +
+                    "    \"cex_inflows\": [{\"price\": 0.1150, \"usd\": 35000.0}]\n" +
+                    "  },\n" +
+                    "  \"whale_trades\": {\n" +
+                    "    \"whale_buys\": [{\"price\": 0.1090, \"usd\": 25000.0}],\n" +
+                    "    \"whale_sells\": [{\"price\": 0.1140, \"usd\": 30000.0}]\n" +
+                    "  },\n" +
+                    "  \"macro_oi\": {\n" +
+                    "    \"macro_longs\": [{\"price\": 0.1070, \"pct\": 1.0}],\n" +
+                    "    \"macro_shorts\": []\n" +
+                    "  },\n" +
+                    "  \"scalp_oi\": {\n" +
+                    "    \"scalp_longs\": [],\n" +
+                    "    \"scalp_shorts\": [{\"price\": 0.1130, \"pct\": 0.5}]\n" +
+                    "  },\n" +
+                    "  \"whale_positions\": {\n" +
+                    "    \"entries\": [],\n" +
+                    "    \"liquidations\": []\n" +
+                    "  },\n" +
+                    "  \"whale_orders\": {\n" +
+                    "    \"take_profits\": [],\n" +
+                    "    \"stop_losses\": [],\n" +
+                    "    \"resting_bids\": [],\n" +
+                    "    \"resting_asks\": []\n" +
+                    "  }\n" +
+                    "}";
+
+            Files.write(emptyWhaleJson.toPath(), json.getBytes("UTF-8"));
+
+            List<InstitutionalLevelsAddon.LevelPill> pills = painter.loadJsonData(emptyWhaleJson);
+            assertTrue(pills != null && !pills.isEmpty(), "Pills loaded successfully with empty whale positions/orders");
+            assertEquals(8, pills.size(), "Loaded exactly 8 available levels (R1, S1, CEX OUT, CEX IN, W-BUY, W-SELL, OI-M, OI-S)");
+
+            // Verify each available level is present and correct
+            assertTrue(pills.stream().anyMatch(p -> p.label.contains("RES 1")), "RES 1 present");
+            assertTrue(pills.stream().anyMatch(p -> p.label.contains("SUP 1")), "SUP 1 present");
+            assertTrue(pills.stream().anyMatch(p -> p.label.contains("CEX OUT")), "CEX OUT present");
+            assertTrue(pills.stream().anyMatch(p -> p.label.contains("CEX IN")), "CEX IN present");
+            assertTrue(pills.stream().anyMatch(p -> p.label.contains("WHL BUY")), "WHL BUY present");
+            assertTrue(pills.stream().anyMatch(p -> p.label.contains("WHL SELL")), "WHL SELL present");
+            assertTrue(pills.stream().anyMatch(p -> p.label.contains("OI-M")), "OI-M present");
+            assertTrue(pills.stream().anyMatch(p -> p.label.contains("OI-S")), "OI-S present");
+
+            // Verify no whale position / order tags are present
+            assertTrue(pills.stream().noneMatch(p -> p.label.contains("WH-ENT") || p.label.contains("SM-ENT")), "No whale entries");
+            assertTrue(pills.stream().noneMatch(p -> p.label.contains("WH-LIQ") || p.label.contains("SM-LIQ")), "No whale liquidations");
+            assertTrue(pills.stream().noneMatch(p -> p.label.contains("WH-TP") || p.label.contains("SM-TP")), "No whale take profits");
+            assertTrue(pills.stream().noneMatch(p -> p.label.contains("WH-SL") || p.label.contains("SM-SL")), "No whale stop losses");
+
+            // Verify all 8 pills render cleanly with zero visual glitches or NPEs
+            for (InstitutionalLevelsAddon.LevelPill p : pills) {
+                Object img = painter.generatePillImage(150, 19, p);
+                assertTrue(img != null, "Pill rendered image cleanly: " + p.label);
+            }
+
+            // Also test when whale_positions and whale_orders are completely null/omitted from JSON
+            String jsonOmitted = "{\n" +
+                    "  \"coin\": \"MAGIC\",\n" +
+                    "  \"current_price\": 0.1115,\n" +
+                    "  \"top_resistances\": [{\"price\": 0.1180}],\n" +
+                    "  \"top_supports\": [{\"price\": 0.1050}]\n" +
+                    "}";
+            File omittedJson = File.createTempFile("omitted_whale_test_", ".json");
+            omittedJson.deleteOnExit();
+            Files.write(omittedJson.toPath(), jsonOmitted.getBytes("UTF-8"));
+
+            List<InstitutionalLevelsAddon.LevelPill> omittedPills = painter.loadJsonData(omittedJson);
+            assertTrue(omittedPills != null && omittedPills.size() == 2, "Loaded 2 levels when other fields omitted");
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            testsFailed++;
+        }
+    }
+
+    private static void testRealBookmapJsonFiles() {
+        System.out.println("\n--- 9. Real Disk .bookmap JSON Files Verification ---");
+
+        File bookmapDir = new File(System.getProperty("user.home"), ".bookmap");
+        if (!bookmapDir.exists()) {
+            System.out.println("  Skipping: .bookmap directory does not exist on this machine");
+            return;
+        }
+
+        String[] coins = {"MAGIC", "MAGMA", "PEPE", "SOL", "latest"};
+        for (String c : coins) {
+            File f = "latest".equals(c)
+                    ? new File(bookmapDir, "institutional_levels_latest.json")
+                    : new File(bookmapDir, "institutional_levels_" + c + ".json");
+
+            if (!f.exists()) {
+                System.out.println("  File not found (skipped): " + f.getName());
+                continue;
+            }
+
+            try {
+                InstitutionalLevelsAddon addon = new InstitutionalLevelsAddon(null);
+                InstitutionalLevelsAddon.InstitutionalPainter painter = addon.new InstitutionalPainter(null, c + "USDT");
+                List<InstitutionalLevelsAddon.LevelPill> pills = painter.loadJsonData(f);
+
+                assertTrue(pills != null && !pills.isEmpty(), "Successfully parsed real file: " + f.getName());
+                assertTrue(pills.size() <= 8, "Pills capped at <= 8 for " + f.getName() + " (size=" + (pills != null ? pills.size() : 0) + ")");
+
+                System.out.println("  [OK] " + f.getName() + " loaded " + (pills != null ? pills.size() : 0) + " pills:");
+                if (pills != null) {
+                    for (InstitutionalLevelsAddon.LevelPill pill : pills) {
+                        // Render each pill to verify no visual glitches or exceptions
+                        Object img = painter.generatePillImage(150, 19, pill);
+                        assertTrue(img != null, "Rendered pill image: " + pill.label);
+                        System.out.println("       * " + pill.label + " (px=" + pill.price + ", prio=" + pill.priority + ")");
+                    }
+                }
+            } catch (Exception e) {
+                System.err.println("Error parsing real file " + f.getName() + ": " + e.getMessage());
+                e.printStackTrace();
+                testsFailed++;
+            }
         }
     }
 }

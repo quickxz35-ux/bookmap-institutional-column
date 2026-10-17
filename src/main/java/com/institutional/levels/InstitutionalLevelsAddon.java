@@ -220,11 +220,11 @@ public class InstitutionalLevelsAddon implements
         public final int priority;
 
         public LevelPill(String label, double price, Color bgColor, Color borderColor, Color textColor, int priority) {
-            this.label = label;
+            this.label = label != null ? label : "";
             this.price = price;
-            this.bgColor = bgColor;
-            this.borderColor = borderColor;
-            this.textColor = textColor;
+            this.bgColor = bgColor != null ? bgColor : Color.DARK_GRAY;
+            this.borderColor = borderColor != null ? borderColor : Color.GRAY;
+            this.textColor = textColor != null ? textColor : Color.WHITE;
             this.priority = priority;
         }
 
@@ -581,7 +581,7 @@ public class InstitutionalLevelsAddon implements
                 // 5. Macro OI (macro_longs, macro_shorts) -> OI-M: <px> (+<pct>)
                 Map<String, Object> moi = SimpleJson.asMap(root.get("macro_oi"));
                 if (moi != null) {
-                    List<Object> mLongs = getListField(moi, "macro_longs", "longs");
+                    List<Object> mLongs = getListField(moi, "macro_longs", "longs", "macro_surges", "surges", "long");
                     for (Object o : mLongs) {
                         Map<String, Object> m = SimpleJson.asMap(o);
                         if (m != null && hasPrice(m)) {
@@ -601,8 +601,28 @@ public class InstitutionalLevelsAddon implements
                         }
                     }
 
-                    List<Object> mShorts = getListField(moi, "macro_shorts", "shorts");
+                    List<Object> mShorts = getListField(moi, "macro_shorts", "shorts", "short");
                     for (Object o : mShorts) {
+                        Map<String, Object> m = SimpleJson.asMap(o);
+                        if (m != null && hasPrice(m)) {
+                            double p = getDoubleField(m, "price", "px", "level");
+                            double pct = getPctField(m);
+                            String label = SimpleJson.asString(m.get("label"));
+                            if (label.isEmpty()) {
+                                label = "OI-M: " + formatPrice(p) + " (" + formatPct(pct) + ")";
+                            }
+                            pills.add(new LevelPill(
+                                    label, p,
+                                    COLOR_OI_MACRO_BG,
+                                    COLOR_OI_MACRO_BORDER,
+                                    COLOR_OI_MACRO_TEXT,
+                                    60
+                            ));
+                        }
+                    }
+                } else {
+                    List<Object> directMoi = SimpleJson.asList(root.get("macro_oi"));
+                    for (Object o : directMoi) {
                         Map<String, Object> m = SimpleJson.asMap(o);
                         if (m != null && hasPrice(m)) {
                             double p = getDoubleField(m, "price", "px", "level");
@@ -625,7 +645,7 @@ public class InstitutionalLevelsAddon implements
                 // 6. Scalp OI (scalp_longs, scalp_shorts) -> OI-S: <px> (+<pct>)
                 Map<String, Object> soi = SimpleJson.asMap(root.get("scalp_oi"));
                 if (soi != null) {
-                    List<Object> sLongs = getListField(soi, "scalp_longs", "longs");
+                    List<Object> sLongs = getListField(soi, "scalp_longs", "longs", "scalp_surges", "surges", "long");
                     for (Object o : sLongs) {
                         Map<String, Object> m = SimpleJson.asMap(o);
                         if (m != null && hasPrice(m)) {
@@ -645,8 +665,28 @@ public class InstitutionalLevelsAddon implements
                         }
                     }
 
-                    List<Object> sShorts = getListField(soi, "scalp_shorts", "shorts");
+                    List<Object> sShorts = getListField(soi, "scalp_shorts", "shorts", "short");
                     for (Object o : sShorts) {
+                        Map<String, Object> m = SimpleJson.asMap(o);
+                        if (m != null && hasPrice(m)) {
+                            double p = getDoubleField(m, "price", "px", "level");
+                            double pct = getPctField(m);
+                            String label = SimpleJson.asString(m.get("label"));
+                            if (label.isEmpty()) {
+                                label = "OI-S: " + formatPrice(p) + " (" + formatPct(pct) + ")";
+                            }
+                            pills.add(new LevelPill(
+                                    label, p,
+                                    COLOR_OI_SCALP_BG,
+                                    COLOR_OI_SCALP_BORDER,
+                                    COLOR_OI_SCALP_TEXT,
+                                    50
+                            ));
+                        }
+                    }
+                } else {
+                    List<Object> directSoi = SimpleJson.asList(root.get("scalp_oi"));
+                    for (Object o : directSoi) {
                         Map<String, Object> m = SimpleJson.asMap(o);
                         if (m != null && hasPrice(m)) {
                             double p = getDoubleField(m, "price", "px", "level");
@@ -1035,11 +1075,13 @@ public class InstitutionalLevelsAddon implements
             // Clear old icons
             synchronized (activeIcons) {
                 for (CanvasIcon icon : activeIcons) {
-                    canvas.removeShape(icon);
+                    try {
+                        canvas.removeShape(icon);
+                    } catch (Throwable ignored) {}
                 }
                 activeIcons.clear();
 
-                if (currentPills.isEmpty()) return;
+                if (currentPills == null || currentPills.isEmpty()) return;
 
                 double defaultPips = (instrumentInfo != null && instrumentInfo.pips > 0) ? instrumentInfo.pips : 0.0;
 
@@ -1047,6 +1089,7 @@ public class InstitutionalLevelsAddon implements
 
                 // Paint new pills strictly in the left margin [LEFT_MARGIN_X .. LEFT_MARGIN_X + PILL_WIDTH]
                 for (LevelPill pill : currentPills) {
+                    if (pill == null) continue;
                     double pips = defaultPips;
                     if (pips <= 0) {
                         pips = (jsonPips > 0) ? jsonPips : estimatePips(pill.price);
@@ -1064,9 +1107,13 @@ public class InstitutionalLevelsAddon implements
                     CompositeVerticalCoordinate y2 = new CompositeVerticalCoordinate(CompositeCoordinateBase.DATA_ZERO, PILL_HEIGHT - PILL_HEIGHT / 2, priceInPips);
 
                     PreparedImage img = generatePillImage(PILL_WIDTH, PILL_HEIGHT, pill);
-                    CanvasIcon icon = new CanvasIcon(img, x1, y1, x2, y2);
-                    canvas.addShape(icon);
-                    activeIcons.add(icon);
+                    if (img != null) {
+                        CanvasIcon icon = new CanvasIcon(img, x1, y1, x2, y2);
+                        try {
+                            canvas.addShape(icon);
+                            activeIcons.add(icon);
+                        } catch (Throwable ignored) {}
+                    }
                 }
             }
         }
@@ -1081,7 +1128,7 @@ public class InstitutionalLevelsAddon implements
             return 0.0000001;
         }
 
-        private PreparedImage generatePillImage(int w, int h, LevelPill pill) {
+        PreparedImage generatePillImage(int w, int h, LevelPill pill) {
             BufferedImage image = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
             Graphics2D g = image.createGraphics();
 
@@ -1089,17 +1136,17 @@ public class InstitutionalLevelsAddon implements
             g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
 
             // Fill rounded capsule background
-            g.setColor(pill.bgColor);
+            g.setColor(pill.bgColor != null ? pill.bgColor : Color.DARK_GRAY);
             g.fillRoundRect(0, 0, w - 1, h - 1, 6, 6);
 
             // Border stroke
-            g.setColor(pill.borderColor);
+            g.setColor(pill.borderColor != null ? pill.borderColor : Color.GRAY);
             g.setStroke(new BasicStroke(1.5f));
             g.drawRoundRect(0, 0, w - 1, h - 1, 6, 6);
 
             // Text Label
-            String label = pill.label;
-            g.setColor(pill.textColor);
+            String label = pill.label != null ? pill.label : "";
+            g.setColor(pill.textColor != null ? pill.textColor : Color.WHITE);
             Font font = new Font("Consolas", Font.BOLD, 10);
             g.setFont(font);
             java.awt.FontMetrics fm = g.getFontMetrics();
@@ -1161,14 +1208,19 @@ public class InstitutionalLevelsAddon implements
             return "0";
         }
 
-        private String formatPct(double pct) {
-            if (Math.abs(pct) <= 1.0 && pct != 0.0) {
-                pct = pct * 100.0;
-            }
+        String formatPct(double pct) {
             if (pct >= 0.0) {
-                return String.format("+%.1f%%", pct);
+                if (Math.abs(pct - Math.round(pct)) < 1e-4) {
+                    return String.format("+%.0f%%", pct);
+                } else {
+                    return String.format("+%.1f%%", pct);
+                }
             } else {
-                return String.format("%.1f%%", pct);
+                if (Math.abs(pct - Math.round(pct)) < 1e-4) {
+                    return String.format("%.0f%%", pct);
+                } else {
+                    return String.format("%.1f%%", pct);
+                }
             }
         }
 
